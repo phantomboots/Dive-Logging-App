@@ -40,8 +40,8 @@ ui <- fluidPage(
   shinyjs::inlineCSS(appCSS),
   fluidRow(
     actionButton('add_button', 'Add', icon('plus')),
-    actionButton('edit_button', 'Edit', icon('edit')),
-    actionButton('delete_button', 'Delete', icon('trash-alt'))
+    actionButton('edit_button', 'Edit', icon('edit', verify_fa = FALSE)),
+    actionButton('delete_button', 'Delete', icon('trash-alt', verify_fa = FALSE))
   ),
   br(),
   fluidRow(width='100%',
@@ -58,9 +58,9 @@ server <- function(input, output, session) {
     # Make reactive to
     input$submit
     input$submit_edit
-    input$delete_button
+    input$yes_delete
     
-    # Load dive time
+    # Load dive table as dives_df
     dbReadTable(pool, 'dives')
     
   })  
@@ -147,8 +147,8 @@ server <- function(input, output, session) {
     dbExecute(pool, quary)
   }
   
-  # Observe event for openning the form, high priority to ensure no reactive values 
-  # are updated untill the event is finished.
+  # Observe event for opening the form, high priority to ensure no reactive values 
+  # are updated until the event is finished.
   observeEvent(input$add_button, priority = 20,{
     dives_entryform('submit')
   })
@@ -159,32 +159,51 @@ server <- function(input, output, session) {
     shinyjs::reset('dives_entryform')
     removeModal()
   })
-  
-  # Delete data function
-  deleteData <- function(table){
-    # Read table from db pool
-    SQL_df <- dbReadTable(pool, table)
-    row_selection <- SQL_df[input$responses_dives_rows_selected, 'row_id']
-    # Delete row
-    quary <- lapply(row_selection, function(nr){
-      dbExecute(pool, sprintf('DELETE FROM "%s" WHERE "row_id" == ("%s")', table, nr))
-    })
-  }
-  
-  # Delete rows when selected, otherwise display error message
+
+  # Observe event for opening the delete modal
   observeEvent(input$delete_button, priority = 20,{
-    # If row selected
-    if(length(input$responses_dives_rows_selected)>=1 ){
-      deleteData(table='dives')
-    }
     showModal(
-      if(length(input$responses_dives_rows_selected) < 1 ){
+      # If row selected
+      if(length(input$responses_dives_rows_selected)==1 ){
+        modalDialog(
+          title = 'Delete selected row?',
+          'Warning: This action cannot be undone!',
+          footer = tagList(
+            actionButton('yes_delete', 'Yes, Delete'),
+            modalButton('Cancel')
+          ),
+          easyClose = TRUE
+        )
+      } else {
         modalDialog(
           title = 'Warning',
-          paste('Please select row(s)' ),easyClose = TRUE
+          paste('Please select a single row' ),
+          easyClose = TRUE
         )
-      })
+      }
+    )
   })
+
+  # Observe event for deleting selected rows
+  observeEvent(input$yes_delete, priority = 20,{
+    deleteData(table='dives', rowid=row_clicked())
+    removeModal()
+  })
+  
+  # React to the row last clicked, save index
+  row_clicked <- reactive({
+    input$responses_dives_row_last_clicked
+  })
+  
+  # Delete data function
+  deleteData <- function(table, rowid){
+    # Read table from db pool
+    SQL_df <- dbReadTable(pool, table)
+    row_selection <- SQL_df[rowid, 'row_id']
+    # Delete row
+    dbExecute(pool, sprintf('DELETE FROM "%s" WHERE "row_id" == ("%s")', table, row_selection))
+    
+  }
   
   # Edit data
   # Update form values in the selected row. Errors are displayed 
