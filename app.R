@@ -5,7 +5,7 @@ library(pool)
 library(shinyjs)
 library(uuid)
 library(dplyr)
-
+library(shinydashboard)
 
 # Based on this example
 # https://www.nielsvandervelden.com/blog/editable-datatables-in-r-shiny-using-sql/
@@ -24,7 +24,7 @@ dbDisconnect(db)
 pool <- dbPool(db)
 
 
-# Label mandatory fields
+# Label mandatory fields function
 labelMandatory <- function(label) {
   tagList(
     label,
@@ -34,20 +34,53 @@ labelMandatory <- function(label) {
 appCSS <- '.mandatory_star { color: red; }'
 
 
-# ui
-ui <- fluidPage(
-  shinyjs::useShinyjs(),
-  shinyjs::inlineCSS(appCSS),
-  fluidRow(
-    actionButton('add_button', 'Add', icon('plus')),
-    actionButton('edit_button', 'Edit', icon('edit', verify_fa = FALSE)),
-    actionButton('delete_button', 'Delete', icon('trash-alt', verify_fa = FALSE))
-  ),
-  br(),
-  fluidRow(width='100%',
-           dataTableOutput('responses_dives', width = '100%')
+
+# Dashboard UI content
+
+# Header
+header <- dashboardHeader(title = 'NDST Dive Logging App')
+# Sidebar
+sidebar <- dashboardSidebar( 
+  sidebarMenu(
+    menuItem('Cruise', tabName = 'cruisetab', icon = icon('th')),
+    menuItem('People', tabName = 'peopletab', icon = icon('th')),
+    menuItem('Equipment', tabName = 'equiptab', icon = icon('th')),
+    menuItem('Instruments', tabName = 'intrutab', icon = icon('th')),
+    menuItem('Platforms', tabName = 'plattab', icon = icon('th')),
+    menuItem('Dive Configuration', tabName = 'configtab', icon = icon('th')),
+    menuItem('Dive', tabName = 'divetab', icon = icon('th')),
+    menuItem('Transect', tabName = 'transtab', icon = icon('th'))
   )
 )
+# Body
+body <- body <- dashboardBody(
+  tabItems(
+    tabItem(tabName = 'divetab',
+            h2('Dives'),
+            fluidPage(
+            shinyjs::useShinyjs(),
+            shinyjs::inlineCSS(appCSS),
+            fluidRow(
+              actionButton('add_button', 'Add', icon('plus')),
+              actionButton('edit_button', 'Edit', icon('edit', verify_fa = FALSE)),
+              actionButton('delete_button', 'Delete', icon('trash-alt', verify_fa = FALSE))
+            ),
+            br(),
+            fluidRow(width='100%',
+                     dataTableOutput('responses_dives', width = '100%')
+            )
+    )),
+    tabItem(tabName = 'transtab',
+            h2('Transects')
+    )
+  )
+)
+ 
+ 
+  # Dashboard ui
+ui <-  dashboardPage(header, sidebar, body)
+
+
 
 # Server
 server <- function(input, output, session) {
