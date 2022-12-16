@@ -11,6 +11,12 @@ library(shinydashboard)
 # https://www.nielsvandervelden.com/blog/editable-datatables-in-r-shiny-using-sql/
   
 
+# still to do
+# - write dive table functions to take dive as input then use for transect as well
+# - test with 2 tables
+# - make certain fields unique keys
+# - somehow need to have transects as a subform of dive
+
 # Connect to db
 dbname <- 'divelogging-db.sqlite'
 db <- dbConnect(RSQLite::SQLite(), dbname)
@@ -38,7 +44,14 @@ appCSS <- '.mandatory_star { color: red; }'
 # Dashboard UI content
 
 # Header
-header <- dashboardHeader(title = 'NDST Dive Logging App')
+header <- dashboardHeader(title = 'NDST Dive Logging App',
+                          tags$li(class = 'dropdown', 
+                                  style='position:fixed;right:10px;top:10px;',
+                                  actionButton("export", "Export", 
+                                               icon('file-export'))
+                          )
+)
+
 # Sidebar
 sidebar <- dashboardSidebar( 
   sidebarMenu(
@@ -62,8 +75,8 @@ body <- body <- dashboardBody(
             shinyjs::inlineCSS(appCSS),
             fluidRow(
               actionButton('add_button', 'Add', icon('plus')),
-              actionButton('edit_button', 'Edit', icon('edit', verify_fa = FALSE)),
-              actionButton('delete_button', 'Delete', icon('trash-alt', verify_fa = FALSE))
+              actionButton('edit_button', 'Edit', icon('edit')),
+              actionButton('delete_button', 'Delete', icon('trash-alt'))
             ),
             br(),
             fluidRow(width='100%',
@@ -309,6 +322,22 @@ server <- function(input, output, session) {
                        options = list(searching = FALSE, lengthChange = FALSE)
     )
   })
+  
+  # Export button
+  observeEvent(input$export, {
+    # Load all tables from db into workspace
+    alltabs <- lapply(setNames(nm = dbListTables(pool)), dbReadTable, conn = pool)
+    # Make export folder
+    datefolder <- as.character(format(Sys.Date(), format='%Y-%m-%d')) 
+    if(!dir.exists(file.path('Exports',datefolder))) 
+      dir.create(file.path('Exports',datefolder), recursive = T)
+    # Export all tables to csv
+    for(i in names(alltabs)){
+      name <- paste0(alltabs[['cruise']]$name, '_', i, '.csv')
+      write.csv(alltabs[[i]], file.path('Exports', datefolder, name), row.names = F)
+    }
+  })
+  
 }
 
 # Run the application 
