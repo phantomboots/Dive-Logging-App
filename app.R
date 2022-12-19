@@ -16,11 +16,6 @@ library(shinydashboard)
 # - make certain fields unique keys
 # - somehow need to have transects as a subform of dive
 
-# - both edit and delete functions are error-prone because you can't use select last row, but
-# instead need to rely on last row clicked (which isn't always what is selected). Might need
-# to look at other options that the modal pop-up if this can't be fixed, maybe the form as a 
-# dashboard box instead?
-
 
 ##############################
 #           Set-up           #
@@ -45,20 +40,10 @@ pool <- dbPool(db)
 #       Common functions      #
 ###############################
 
-# Add data function
-appendData <- function(table, data){
-  quary <- sqlAppendTable(pool, table, data, row.names = FALSE)
-  dbExecute(pool, quary)
-}
-
-# # Delete data function
-# deleteData <- function(table, rowid){
-#   # Read table from db pool
-#   SQL_df <- dbReadTable(pool, table)
-#   row_selection <- SQL_df[rowid, 'row_id']
-#   # Delete row
-#   dbExecute(pool, sprintf('DELETE FROM "%s" WHERE "row_id" == ("%s")', table, row_selection))
-#   
+# # Add data function
+# appendData <- function(table, data){
+#   quary <- sqlAppendTable(pool, table, data, row.names = FALSE)
+#   dbExecute(pool, quary)
 # }
 
 # Label mandatory fields function
@@ -213,14 +198,14 @@ server <- function(input, output, session) {
   # Display dives table
   output$responses_dives <- DT::renderDataTable({
     table <- dives_df() %>% select(-row_id)
-    table <- datatable(table, rownames = FALSE,
+    table <- datatable(table, rownames = FALSE, selection = 'single',
                        options = list(searching = FALSE, lengthChange = FALSE)
     )
   })
   # Display cruise table
   output$responses_cruise <- DT::renderDataTable({
     table <- cruise_df() %>% select(-row_id)
-    table <- datatable(table, rownames = FALSE,
+    table <- datatable(table, rownames = FALSE, selection = 'single',
                        options = list(searching = FALSE, lengthChange = FALSE)
     )
   })
@@ -232,8 +217,8 @@ server <- function(input, output, session) {
   ##############################
   
   # Save form data into data_frame format, reactive to changes in input
-  diveFormData <- reactive({
-    diveFormData <- data.frame(row_id = UUIDgenerate(),
+  dives_FormData <- reactive({
+    divesFormData <- data.frame(row_id = UUIDgenerate(),
                                cruise_name = input$dive_cruisename,
                                leg = input$dive_cruiseleg,
                                name = input$dive_name, 
@@ -246,12 +231,12 @@ server <- function(input, output, session) {
                                summary = input$dive_summary,
                                note = input$dive_note,
                                stringsAsFactors = FALSE)
-    return(diveFormData)
+    return(divesFormData)
   })
   
   
   # Save form data into data_frame format, reactive to changes in input
-  cruiseFormData <- reactive({
+  cruise_FormData <- reactive({
     cruiseFormData <- data.frame(row_id = UUIDgenerate(),
                                name = input$cruise_name,
                                leg = input$cruise_leg,
@@ -361,16 +346,9 @@ server <- function(input, output, session) {
   #       Observe Events       #
   ##############################
 
-  # React to the row last clicked, save index
-  # !!!! doesn't work with row seleted, currently this could lead to selected the wrong row because the
-  #      last clicked isn't always the one selected
-  rowReact <- function(table){
-    row_clicked <- reactive({
-      input[[paste0('responses_',table,'_row_last_clicked')]]
-    })
-  }
 
   # Function for common observe events
+  # Row last clicked is the row selected because only one row can be selected at a time
   obsEvents <- function(table, data){
     
     # Observe event for opening the form, high priority to ensure no reactive values
@@ -381,66 +359,43 @@ server <- function(input, output, session) {
     
     # Observe event for opening the delete modal
     observeEvent(input[[paste0('delete_button_', table)]], priority = 20,{
-      showModal(
-        # If row selected
-        if(length(input[[paste0('responses_',table,'_rows_selected')]])==1 ){
-          modalDialog(
-            title = 'Delete selected row?',
-            'Warning: This action cannot be undone!',
-            footer = tagList(
-              actionButton(paste0('yes_delete_',table), 'Yes, Delete'),
-              modalButton('Cancel')
-            ),
-            easyClose = TRUE
-          )
-        } else {
-          modalDialog(
-            title = 'Warning',
-            paste('Please select a single row' ),
-            easyClose = TRUE
-          )
-        }
-      )
+      showModal(modalDialog(
+        title = 'Delete selected row?',
+        'Warning: This action cannot be undone!',
+        footer = tagList(
+          actionButton(paste0('yes_delete_',table), 'Yes, Delete'),
+          modalButton('Cancel')
+        ), 
+        easyClose = TRUE
+      ))
     })
     
     # Observe event for deleting selected rows
     observeEvent(input[[paste0('yes_delete_',table)]], priority = 20,{
       # Read table from db pool
       SQL_df <- dbReadTable(pool, table)
-      row_selection <- SQL_df[row_clicked(), 'row_id']
+      row_selection <- SQL_df[input[[paste0('responses_',table,'_row_last_clicked')]], 'row_id']
       # Delete row
       dbExecute(pool, sprintf('DELETE FROM "%s" WHERE "row_id" == ("%s")', table, row_selection))
-     # deleteData(table=table, rowid=row_clicked())
       removeModal()
     })
     
-    ## !!! this does not work within observer Events function, can't figure out why 
-    #      it clears the form and you input data as normal, but it saves the previous form data instead
     
-    # # Observe event for submiting form data, append to db and reset dives_entryform
-    # observeEvent(input[[paste0('submit_', table)]], priority = 20,{
-    #   appendData(table=table, data=data)
-    #   shinyjs::reset(paste0(table,'_entryform'))
-    #   removeModal()
-    # })
+    # Observe event for submiting form data, append to db and reset _entryform
+    # FormData() table needs to be called within observe event to be reactive
+    observeEvent(input[[paste0('submit_', table)]], priority = 20,{
+      formdata <- get(paste0(table,'_FormData'))
+      quary <- sqlAppendTable(pool, table, formdata(), row.names = FALSE)
+      dbExecute(pool, quary)
+      shinyjs::reset(paste0(table,'_entryform'))
+      removeModal()
+    })
   }
 
 
-  # Dives row reactive
-  row_clicked <- rowReact(table='dives')
-
   # Dive observer events
-  obsEvents(table='dives', data=diveFormData())
+  obsEvents(table='dives')
 
-
-  # Observe event for submiting form data, append to db and reset dives_entryform
-  observeEvent(input$submit_dives, priority = 20,{
-    appendData(table='dives', data=diveFormData())
-    shinyjs::reset('dives_entryform')
-    removeModal()
-  })
-  
-  
   
   
   ##############################
@@ -492,10 +447,10 @@ server <- function(input, output, session) {
   observeEvent(input$submit_edit_dives, priority = 20, {
     # Get db data
     SQL_df <- dbReadTable(pool, 'dives')
-    row_selection <- SQL_df[input$responses_dives_row_last_clicked, 'row_id']
+    row_id <- SQL_df[input$responses_dives_row_last_clicked, 'row_id']
     dbExecute(pool, sprintf('UPDATE "dives" SET "cruise_name" = ?, "leg" = ?, "name" = ?, "pilot" = ?, "start_time" = ?,
                             "end_time" = ?, "site_name" = ?, "dive_config" = ? , "objective" = ?, "summary" = ?,
-                            "note" = ? WHERE "row_id" = ("%s")', row_selection),
+                            "note" = ? WHERE "row_id" = ("%s")', row_id),
               param = list(input$dive_cruisename,
                            input$dive_cruiseleg,
                            input$dive_name,
