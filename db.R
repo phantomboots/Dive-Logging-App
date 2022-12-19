@@ -7,19 +7,20 @@ dbname <- 'divelogging-db.sqlite'
 mydb <- dbConnect(RSQLite::SQLite(), dbname)
 
 # Create cruise table
-cruise <- data.frame(name='Test', leg=1)
+cruise <- data.frame(row_id=character(),name=character(0),leg=numeric(0),
+                     objective=character(0), summary=character(0), note=character(0))
 
 # Load people and equipment list
 people <- read.csv('people.csv')
 equipment <- read.csv('equipment.csv')
 
 # Create empty table to fill
-dives <- data.frame(row_id = character(), cruise_name=character(0),leg=numeric(0),name=character(0),
+dives <- data.frame(row_id=character(),cruise_name=character(0),leg=numeric(0),name=character(0),
                     pilot=character(0),start_time=character(0),
                     end_time=character(0),site_name=character(0), 
                     dive_config=character(0), objective=character(0), 
                     summary=character(0), note=character(0))
-transect <- data.frame(row_id = character(), cruise_name=character(0),leg=numeric(0),dive_name=character(0), 
+transect <- data.frame(row_id=character(),cruise_name=character(0),leg=numeric(0),dive_name=character(0), 
                        name=character(0), start_time=character(0),
                        end_time=character(0), objective=character(0), 
                        summary=character(0), note=character(0))
