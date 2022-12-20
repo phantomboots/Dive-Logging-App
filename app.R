@@ -9,10 +9,9 @@ library(shinydashboard)
 
 # Based on this example
 # https://www.nielsvandervelden.com/blog/editable-datatables-in-r-shiny-using-sql/
-  
+
 
 # still to do
-# - test with 2 tables
 # - make certain fields unique keys
 # - somehow need to have transects as a subform of dive
 
@@ -40,12 +39,6 @@ pool <- dbPool(db)
 #       Common functions      #
 ###############################
 
-# # Add data function
-# appendData <- function(table, data){
-#   quary <- sqlAppendTable(pool, table, data, row.names = FALSE)
-#   dbExecute(pool, quary)
-# }
-
 # Label mandatory fields function
 labelMandatory <- function(label) {
   tagList(
@@ -53,7 +46,17 @@ labelMandatory <- function(label) {
     span('*', class = 'mandatory_star')
   )
 }
-appCSS <- '.mandatory_star { color: red; }'
+
+# Label unique values required
+labelUnique <- function(label) {
+  tagList(
+    label,
+    span('**', class = 'unique_star')
+    )
+}
+appCSS <- list('.unique_star'='color: red',
+               '.mandatory_star'='color: red')
+               
 
 
 
@@ -133,8 +136,8 @@ body <- body <- dashboardBody(
     )
   )
 )
- 
- 
+
+
 # Dashboard ui
 ui <-  dashboardPage(header, sidebar, body)
 
@@ -173,7 +176,7 @@ server <- function(input, output, session) {
   ##############################
   #           Tables           #
   ##############################
-
+  
   # Make inputs reactive and load tables
   makeReactive <- function(table) {
     # reactive
@@ -185,11 +188,11 @@ server <- function(input, output, session) {
       # Load table
       dbReadTable(pool, table)
     })
-
+    
     # Return
     return(tmp)
   }
-
+  
   # Make tables reactive
   dives_df <- makeReactive('dives')
   cruise_df <- makeReactive('cruise')
@@ -219,18 +222,18 @@ server <- function(input, output, session) {
   # Save form data into data_frame format, reactive to changes in input
   dives_FormData <- reactive({
     divesFormData <- data.frame(row_id = UUIDgenerate(),
-                               cruise_name = input$dive_cruisename,
-                               leg = input$dive_cruiseleg,
-                               name = input$dive_name, 
-                               pilot = input$dive_pilot,
-                               start_time = as.character(format(input$dive_starttime, format='%Y-%m-%dT')),
-                               end_time = as.character(format(input$dive_endtime, format='%Y-%m-%dT')),
-                               site_name = input$dive_sitename,
-                               dive_config = input$dive_diveconfig,
-                               objective = input$dive_objective,
-                               summary = input$dive_summary,
-                               note = input$dive_note,
-                               stringsAsFactors = FALSE)
+                                cruise_name = input$dive_cruisename,
+                                leg = input$dive_cruiseleg,
+                                name = input$dive_name, 
+                                pilot = input$dive_pilot,
+                                start_time = as.character(format(input$dive_starttime, format='%Y-%m-%dT')),
+                                end_time = as.character(format(input$dive_endtime, format='%Y-%m-%dT')),
+                                site_name = input$dive_sitename,
+                                dive_config = input$dive_diveconfig,
+                                objective = input$dive_objective,
+                                summary = input$dive_summary,
+                                note = input$dive_note,
+                                stringsAsFactors = FALSE)
     return(divesFormData)
   })
   
@@ -238,12 +241,12 @@ server <- function(input, output, session) {
   # Save form data into data_frame format, reactive to changes in input
   cruise_FormData <- reactive({
     cruiseFormData <- data.frame(row_id = UUIDgenerate(),
-                               name = input$cruise_name,
-                               leg = input$cruise_leg,
-                               objective = input$cruise_objective,
-                               summary = input$cruise_summary,
-                               note = input$cruise_note,
-                               stringsAsFactors = FALSE)
+                                 name = input$cruise_name,
+                                 leg = input$cruise_leg,
+                                 objective = input$cruise_objective,
+                                 summary = input$cruise_summary,
+                                 note = input$cruise_note,
+                                 stringsAsFactors = FALSE)
     return(cruiseFormData)
   })
   
@@ -264,9 +267,12 @@ server <- function(input, output, session) {
     })
   }
   
-  # Set mandatory fields for dives form
+  
+  # Set mandatory fields
   obsFieldsMandatory(table='dives', fields=c('dive_name', 'dive_pilot', 'dive_diveconfig'))
-
+  obsFieldsMandatory(table='cruise', fields=c('cruise_name', 'cruise_leg'))
+  
+  
   # Form for dive data entry
   dives_entryform <- function(button_id){
     showModal(
@@ -280,13 +286,13 @@ server <- function(input, output, session) {
                   cellWidths = c('250px', '150px'),
                   cellArgs = list(style = 'vertical-align: top'),
                   # Use the last record for cruise name and leg as defaults
-                  textInput('dive_cruisename', labelMandatory('Cruise name'), cruise$name[nrow(cruise)]),
-                  textInput('dive_cruiseleg', labelMandatory('Leg'),  cruise$leg[nrow(cruise)])
+                  textInput('dive_cruisename', labelMandatory('Cruise name'), cruise_df()$name[nrow(cruise_df())]),
+                  textInput('dive_cruiseleg', labelMandatory('Leg'),  cruise_df()$leg[nrow(cruise_df())])
                 ),
                 splitLayout(
                   cellWidths = c('200px', '200px'),
                   cellArgs = list(style = 'vertical-align: top'),
-                  textInput('dive_name', labelMandatory('Dive name'),  ''),
+                  textInput('dive_name', labelUnique('Dive name'),  ''),
                   textInput('dive_sitename', 'Site name', ''),
                 ),
                 splitLayout(
@@ -300,18 +306,17 @@ server <- function(input, output, session) {
                 textInput('dive_objective', labelMandatory('Objective'), ''),
                 textInput('dive_summary', 'Summary', ''),
                 textInput('dive_note', 'Note', ''),
-                helpText(labelMandatory(''), paste('Mandatory field.')),
+                helpText(labelMandatory(''), paste('Mandatory field')),
+                helpText(labelUnique(''), paste('Unique key')),
+                actionButton('check_dives', 'Check'),
                 actionButton(button_id, 'Submit')
               ),
-              easyClose = TRUE
+              easyClose = FALSE
             )
         )
       )
     )
   }
-
-  # Set mandatory fields for dives form
-  obsFieldsMandatory(table='cruise', fields=c('cruise_name', 'cruise_leg'))
   
   # Form for cruise data entry
   cruise_entryform <- function(button_id){
@@ -334,7 +339,7 @@ server <- function(input, output, session) {
                 helpText(labelMandatory(''), paste('Mandatory field.')),
                 actionButton(button_id, 'Submit')
               ),
-              easyClose = TRUE
+              easyClose = FALSE
             )
         )
       )
@@ -345,11 +350,11 @@ server <- function(input, output, session) {
   ##############################
   #       Observe Events       #
   ##############################
-
-
+  
+  
   # Function for common observe events
   # Row last clicked is the row selected because only one row can be selected at a time
-  obsEvents <- function(table, data){
+  obsEvents <- function(table){
     
     # Observe event for opening the form, high priority to ensure no reactive values
     # are updated until the event is finished.
@@ -391,83 +396,155 @@ server <- function(input, output, session) {
       removeModal()
     })
   }
-
-
+  
+  
   # Dive observer events
   obsEvents(table='dives')
-
+  obsEvents(table='cruise')
   
   
-  ##############################
-  #  Dives Edit form and save  #
-  ##############################
+ 
 
+##################################
+#    Dives Checks and  Edit      #
+##################################
 
-  # Edit data
-  # Update form values in the selected row. Errors are displayed if there are non or more then 1 row selected.
-  observeEvent(input$edit_button_dives, priority = 20,{
-    # Fetch db data
-    SQL_df <- dbReadTable(pool, 'dives')
-    # Warnings for selection
-    showModal(
-      if(length(input$responses_dives_rows_selected) > 1 ){
-        modalDialog(
-          title = 'Warning',
-          paste('Please select only one row.' ),easyClose = TRUE)
-      } else if(length(input$responses_dives_rows_selected) < 1){
-        modalDialog(
-          title = 'Warning',
-          paste('Please select a row.' ),easyClose = TRUE)
-      })
-    # If one row is selected open form and update
-    if(length(input$responses_dives_rows_selected) == 1 ){
-      # Form
-      dives_entryform('submit_edit_dives')
-      # Update
-      updateTextInput(session, 'dive_cruisename', value = SQL_df[input$responses_dives_rows_selected, 'cruise_name'])
-      updateTextInput(session,'dive_cruiseleg', value = SQL_df[input$responses_dives_rows_selected, 'leg'])
-      updateTextInput(session,'dive_name', value = SQL_df[input$responses_dives_rows_selected, 'name'])
-      updateTextInput(session,'dive_sitename',  value = SQL_df[input$responses_dives_rows_selected, 'site_name'])
-      updateSelectInput(session,'dive_diveconfig',  selected = SQL_df[input$responses_dives_rows_selected, 'dive_config'])
-      updateSelectInput(session,'dive_pilot',  selected = SQL_df[input$responses_dives_rows_selected, 'pilot'])
-      updateDateInput(session,'dive_starttime', value = SQL_df[input$responses_dives_rows_selected, 'start_time'])
-      updateDateInput(session,'dive_endtime', value = SQL_df[input$responses_dives_rows_selected, 'end_time'])
-      updateTextInput(session,'dive_objective', value = SQL_df[input$responses_dives_rows_selected, 'objective'])
-      updateTextInput(session,'dive_summary', value = SQL_df[input$responses_dives_rows_selected, 'summary'])
-      updateTextInput(session, 'dive_note', value = SQL_df[input$responses_dives_rows_selected, 'note'])
-    }
+  # Dive name must be unique, toggle submit until unique
+  # !!! Other options could be change colour or text on check button to indicate a pass,
+  # while also toggling submit
+  observeEvent(input$check_dives,{
+    cond <-!(input$dive_name %in% dives_df()$name)
+    shinyjs::toggleState(id = 'submit_dives', condition = cond)
   })
+  
+  
+  # Use this code to create sub-form for transect that opens from dive form
+  
+  # # Dive names must be unique, check and open new model with result
+  # observeEvent(input$check_dives,{ 
+  #   # Save form data temporarily
+  #   tmp <<- dives_FormData()
+  #   showModal(
+  #     if( input$dive_name %in% dives_df()$name ){
+  #       modalDialog(
+  #         title = "Error!",
+  #         "Dive name must be a unique value. Try again.",
+  #         easyClose=FALSE,
+  #         footer = actionButton("restoreModal", label = "Okay")
+  #       )
+  #     } else {
+  #       modalDialog(
+  #         title = "Success!",
+  #         "All checks have passed",
+  #         easyClose=FALSE,
+  #         footer = actionButton("restoreModal", label = "Okay")
+  #       )
+  #     }
+  #   )
+  # })
+  # # Restore dive entry form modal, after check is performed
+  # observeEvent(input$restoreModal, {
+  #   # Open form
+  #   dives_entryform('submit_dives')
+  #   # Update
+  #   updateTextInput(session, 'dive_cruisename', value = tmp[1, 'cruise_name'])
+  #   updateTextInput(session,'dive_cruiseleg', value = tmp[1, 'leg'])
+  #   updateTextInput(session,'dive_name', value = tmp[1, 'name'])
+  #   updateTextInput(session,'dive_sitename',  value = tmp[1, 'site_name'])
+  #   updateSelectInput(session,'dive_diveconfig',  selected = tmp[1, 'dive_config'])
+  #   updateSelectInput(session,'dive_pilot',  selected = tmp[1, 'pilot'])
+  #   updateDateInput(session,'dive_starttime', value = tmp[1, 'start_time'])
+  #   updateDateInput(session,'dive_endtime', value = tmp[1, 'end_time'])
+  #   updateTextInput(session,'dive_objective', value = tmp[1, 'objective'])
+  #   updateTextInput(session,'dive_summary', value = tmp[1, 'summary'])
+  #   updateTextInput(session, 'dive_note', value = tmp[1, 'note'])
+  #   
+  # })
+  
 
+# Edit data
+# Update form values in the selected row.
+observeEvent(input$edit_button_dives, priority = 20,{
+  # Fetch db data
+  SQL_df <- dbReadTable(pool, 'dives')
+  # Form
+  dives_entryform('submit_edit_dives')
+  # Update
+  updateTextInput(session, 'dive_cruisename', value = SQL_df[input$responses_dives_rows_selected, 'cruise_name'])
+  updateTextInput(session,'dive_cruiseleg', value = SQL_df[input$responses_dives_rows_selected, 'leg'])
+  updateTextInput(session,'dive_name', value = SQL_df[input$responses_dives_rows_selected, 'name'])
+  updateTextInput(session,'dive_sitename',  value = SQL_df[input$responses_dives_rows_selected, 'site_name'])
+  updateSelectInput(session,'dive_diveconfig',  selected = SQL_df[input$responses_dives_rows_selected, 'dive_config'])
+  updateSelectInput(session,'dive_pilot',  selected = SQL_df[input$responses_dives_rows_selected, 'pilot'])
+  updateDateInput(session,'dive_starttime', value = SQL_df[input$responses_dives_rows_selected, 'start_time'])
+  updateDateInput(session,'dive_endtime', value = SQL_df[input$responses_dives_rows_selected, 'end_time'])
+  updateTextInput(session,'dive_objective', value = SQL_df[input$responses_dives_rows_selected, 'objective'])
+  updateTextInput(session,'dive_summary', value = SQL_df[input$responses_dives_rows_selected, 'summary'])
+  updateTextInput(session, 'dive_note', value = SQL_df[input$responses_dives_rows_selected, 'note'])
+  
+})
 
-
-  # Updates the selected row with the values that were entered in the form, based on the row last clicked.
-  #  Note that for identifying the selected row_id the "row_last_clicked" function is used instead of "rows_selected".
-  # This is because upon showing the form module the row is deselected which results in a NULL when the rows_selected
-  # function is used.
-  observeEvent(input$submit_edit_dives, priority = 20, {
-    # Get db data
-    SQL_df <- dbReadTable(pool, 'dives')
-    row_id <- SQL_df[input$responses_dives_row_last_clicked, 'row_id']
-    dbExecute(pool, sprintf('UPDATE "dives" SET "cruise_name" = ?, "leg" = ?, "name" = ?, "pilot" = ?, "start_time" = ?,
+# Updates the selected row with the values that were entered in the form, based on the row last clicked.
+observeEvent(input$submit_edit_dives, priority = 20, {
+  # Get db data
+  SQL_df <- dbReadTable(pool, 'dives')
+  row_id <- SQL_df[input$responses_dives_row_last_clicked, 'row_id']
+  dbExecute(pool, sprintf('UPDATE "dives" SET "cruise_name" = ?, "leg" = ?, "name" = ?, "pilot" = ?, "start_time" = ?,
                             "end_time" = ?, "site_name" = ?, "dive_config" = ? , "objective" = ?, "summary" = ?,
                             "note" = ? WHERE "row_id" = ("%s")', row_id),
-              param = list(input$dive_cruisename,
-                           input$dive_cruiseleg,
-                           input$dive_name,
-                           input$dive_pilot,
-                           as.character(format(input$dive_starttime, format='%Y-%m-%dT')),
-                           as.character(format(input$dive_endtime, format='%Y-%m-%dT')),
-                           input$dive_sitename,
-                           input$dive_diveconfig,
-                           input$dive_objective,
-                           input$dive_summary,
-                           input$dive_note))
-    removeModal()
-
-  })
-
+            param = list(input$dive_cruisename,
+                         input$dive_cruiseleg,
+                         input$dive_name,
+                         input$dive_pilot,
+                         as.character(format(input$dive_starttime, format='%Y-%m-%dT')),
+                         as.character(format(input$dive_endtime, format='%Y-%m-%dT')),
+                         input$dive_sitename,
+                         input$dive_diveconfig,
+                         input$dive_objective,
+                         input$dive_summary,
+                         input$dive_note))
+  removeModal()
   
-# Still need to add observer events for cruise
+})
+
+
+###################################
+#           Cruise Edit           #
+###################################
+
+
+# Edit data
+# Update form values in the selected row.
+observeEvent(input$edit_button_cruise, priority = 20,{
+  # Fetch db data
+  SQL_df <- dbReadTable(pool, 'cruise')
+  # Form
+  cruise_entryform('submit_edit_cruise')
+  # Update
+  updateTextInput(session, 'cruise_name', value = SQL_df[input$responses_cruise_rows_selected, 'name'])
+  updateTextInput(session,'cruise_leg', value = SQL_df[input$responses_cruise_rows_selected, 'leg'])
+  updateTextInput(session,'cruise_objective', value = SQL_df[input$responses_cruise_rows_selected, 'objective'])
+  updateTextInput(session,'cruise_summary', value = SQL_df[input$responses_cruise_rows_selected, 'summary'])
+  updateTextInput(session, 'cruise_note', value = SQL_df[input$responses_cruise_rows_selected, 'note'])
+  
+})
+
+# Updates the selected row with the values that were entered in the form, based on the row last clicked.
+observeEvent(input$submit_edit_cruise, priority = 20, {
+  # Get db data
+  SQL_df <- dbReadTable(pool, 'cruise')
+  row_id <- SQL_df[input$responses_cruise_row_last_clicked, 'row_id']
+  dbExecute(pool, sprintf('UPDATE "cruise" SET "name" = ?, "leg" = ?, "objective" = ?, "summary" = ?,
+                            "note" = ? WHERE "row_id" = ("%s")', row_id),
+            param = list(input$cruise_name,
+                         input$cruise_leg,
+                         input$cruise_objective,
+                         input$cruise_summary,
+                         input$cruise_note))
+  removeModal()
+  
+})
+
 
 }
 
