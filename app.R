@@ -6,6 +6,7 @@ library(shinyjs)
 library(uuid)
 library(dplyr)
 library(shinydashboard)
+#library(shinyTime)
 
 # Based on this example
 # https://www.nielsvandervelden.com/blog/editable-datatables-in-r-shiny-using-sql/
@@ -227,7 +228,7 @@ server <- function(input, output, session) {
                                 name = input$dive_name, 
                                 pilot = input$dive_pilot,
                                 start_time = as.character(format(input$dive_starttime, format='%Y-%m-%dT')),
-                                end_time = as.character(format(input$dive_endtime, format='%Y-%m-%dT')),
+                                end_time = input$dive_endtime,
                                 site_name = input$dive_sitename,
                                 dive_config = input$dive_diveconfig,
                                 objective = input$dive_objective,
@@ -269,7 +270,8 @@ server <- function(input, output, session) {
   
   
   # Set mandatory fields
-  obsFieldsMandatory(table='dives', fields=c('dive_name', 'dive_pilot', 'dive_diveconfig'))
+  obsFieldsMandatory(table='dives', fields=c('cruise_name', 'cruise_leg','dive_name', 
+                                             'dive_pilot', 'dive_diveconfig','dive_objective'))
   obsFieldsMandatory(table='cruise', fields=c('cruise_name', 'cruise_leg'))
   
   
@@ -278,7 +280,7 @@ server <- function(input, output, session) {
     showModal(
       modalDialog(
         div(id=('dives_entryform'),
-            tags$head(tags$style('.modal-dialog{ width:500px}')),
+            tags$head(tags$style('.modal-dialog{ width:450px}')),
             tags$head(tags$style(HTML('.shiny-split-layout > div {overflow: visible}'))),
             fluidPage(
               fluidRow(
@@ -301,15 +303,27 @@ server <- function(input, output, session) {
                   selectInput('dive_diveconfig', labelMandatory('Dive config'), c('d1','d2','d3')),
                   selectInput('dive_pilot', labelMandatory('Pilot'), people$initials),
                 ),
-                dateInput('dive_starttime', label = 'Start date:', format = "yyyy-mm-dd"),
-                dateInput('dive_endtime', label = 'End date', format = "yyyy-mm-dd"),
+                splitLayout(
+                  cellWidths = c('300px', '100px'),
+                  cellArgs = list(style = 'vertical-align: top'),
+                  uiOutput('out_dive_starttime'),
+                  actionButton('set_dive_starttime', 'Start', icon = icon("clock"), class = "btn-primary"),
+                ),
+                splitLayout(
+                  cellWidths = c('300px', '100px'),
+                  cellArgs = list(style = 'vertical-align: top'),
+                  uiOutput('out_dive_endtime'),
+                  actionButton('set_dive_endtime', 'End', icon = icon("clock"), class = "btn-primary"),
+                ),
+                tags$style(type='text/css', '#set_dive_starttime { width:100%; margin-top: 25px}'),
+                tags$style(type='text/css', '#set_dive_endtime { width:100%; margin-top: 25px}'),
                 textInput('dive_objective', labelMandatory('Objective'), ''),
                 textInput('dive_summary', 'Summary', ''),
                 textInput('dive_note', 'Note', ''),
                 helpText(labelMandatory(''), paste('Mandatory field')),
                 helpText(labelUnique(''), paste('Unique key')),
-                actionButton('check_dives', 'Check'),
-                actionButton(button_id, 'Submit')
+                actionButton('check_dives', 'Check', icon = icon("refresh")),
+                actionButton(button_id, 'Submit', class = "btn-warning")
               ),
               easyClose = FALSE
             )
@@ -323,7 +337,7 @@ server <- function(input, output, session) {
     showModal(
       modalDialog(
         div(id=('cruise_entryform'),
-            tags$head(tags$style('.modal-dialog{ width:500px}')),
+            tags$head(tags$style('.modal-dialog{ width:450px}')),
             tags$head(tags$style(HTML('.shiny-split-layout > div {overflow: visible}'))),
             fluidPage(
               fluidRow(
@@ -403,8 +417,35 @@ server <- function(input, output, session) {
   obsEvents(table='cruise')
   
   
- 
+  ##################################
+  #   Start and End time buttons   #
+  ##################################
 
+  # Starting empty field
+  emptytime <- ''
+  
+  # Make reactive
+  datetimes <- reactiveValues(dive_start = emptytime,
+                              dive_end = emptytime)
+  
+  # Event observers for datetimes
+  observeEvent(input$set_dive_starttime,{
+    datetimes$dive_start <- as.character(format(Sys.time(), format='%Y-%m-%dT-%TZ', tz='GMT'))
+  })
+  observeEvent(input$set_dive_endtime,{
+    datetimes$dive_end <- as.character(format(Sys.time(), format='%Y-%m-%dT-%TZ', tz='GMT'))
+    })
+  
+  # Generate the textInput for datetimes
+  output$out_dive_starttime <- renderUI({
+    textInput('dive_starttime', 'Start time:', datetimes$dive_start)
+  })
+  output$out_dive_endtime <- renderUI({
+    textInput('dive_endtime', 'End time:', datetimes$dive_end)
+  })
+
+
+  
 ##################################
 #    Dives Checks and  Edit      #
 ##################################
@@ -418,6 +459,7 @@ server <- function(input, output, session) {
   })
   
   
+
   # Use this code to create sub-form for transect that opens from dive form
   
   # # Dive names must be unique, check and open new model with result
@@ -476,8 +518,8 @@ observeEvent(input$edit_button_dives, priority = 20,{
   updateTextInput(session,'dive_sitename',  value = SQL_df[input$responses_dives_rows_selected, 'site_name'])
   updateSelectInput(session,'dive_diveconfig',  selected = SQL_df[input$responses_dives_rows_selected, 'dive_config'])
   updateSelectInput(session,'dive_pilot',  selected = SQL_df[input$responses_dives_rows_selected, 'pilot'])
-  updateDateInput(session,'dive_starttime', value = SQL_df[input$responses_dives_rows_selected, 'start_time'])
-  updateDateInput(session,'dive_endtime', value = SQL_df[input$responses_dives_rows_selected, 'end_time'])
+  updateTextInput(session,'dive_starttime', value = SQL_df[input$responses_dives_rows_selected, 'start_time'])
+  updateTextInput(session,'dive_endtime', value = SQL_df[input$responses_dives_rows_selected, 'end_time'])
   updateTextInput(session,'dive_objective', value = SQL_df[input$responses_dives_rows_selected, 'objective'])
   updateTextInput(session,'dive_summary', value = SQL_df[input$responses_dives_rows_selected, 'summary'])
   updateTextInput(session, 'dive_note', value = SQL_df[input$responses_dives_rows_selected, 'note'])
@@ -496,8 +538,8 @@ observeEvent(input$submit_edit_dives, priority = 20, {
                          input$dive_cruiseleg,
                          input$dive_name,
                          input$dive_pilot,
-                         as.character(format(input$dive_starttime, format='%Y-%m-%dT')),
-                         as.character(format(input$dive_endtime, format='%Y-%m-%dT')),
+                         input$dive_starttime,
+                         input$dive_endtime,
                          input$dive_sitename,
                          input$dive_diveconfig,
                          input$dive_objective,
