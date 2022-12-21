@@ -20,7 +20,7 @@ dives <- data.frame(row_id=character(),cruise_name=character(0),leg=character(0)
                     end_time=character(0),site_name=character(0), 
                     dive_config=character(0), objective=character(0), 
                     summary=character(0), note=character(0))
-transect <- data.frame(row_id=character(),cruise_name=character(0),leg=numeric(0),dive_name=character(0), 
+transect <- data.frame(row_id=character(),cruise_name=character(0),leg=character(0),dive_name=character(0), 
                        name=character(0), start_time=character(0),
                        end_time=character(0), objective=character(0), 
                        summary=character(0), note=character(0))

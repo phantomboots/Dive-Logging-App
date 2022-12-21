@@ -6,7 +6,7 @@ library(shinyjs)
 library(uuid)
 library(dplyr)
 library(shinydashboard)
-#library(shinyTime)
+library(purrr)
 
 # Based on this example
 # https://www.nielsvandervelden.com/blog/editable-datatables-in-r-shiny-using-sql/
@@ -48,13 +48,6 @@ labelMandatory <- function(label) {
   )
 }
 
-# Label unique values required
-labelUnique <- function(label) {
-  tagList(
-    label,
-    span('**', class = 'unique_star')
-    )
-}
 appCSS <- list('.unique_star'='color: red',
                '.mandatory_star'='color: red')
                
@@ -168,7 +161,7 @@ server <- function(input, output, session) {
       dir.create(file.path('Exports',datefolder), recursive = T)
     # Export all tables to csv
     for(i in names(alltabs)){
-      name <- paste0(alltabs[['cruise']]$name, '_', i, '.csv')
+      name <- paste0(alltabs[['cruise']]$name[1], '_', i, '.csv')
       write.csv(alltabs[[i]], file.path('Exports', datefolder, name), row.names = F)
     }
   })
@@ -182,7 +175,7 @@ server <- function(input, output, session) {
   makeReactive <- function(table) {
     # reactive
     tmp <- reactive({
-      # Make reactive to
+      # Make reactive
       input[[paste0('submit_', table)]]
       input[[paste0('submit_edit_', table)]]
       input[[paste0('yes_delete_', table)]]
@@ -201,7 +194,7 @@ server <- function(input, output, session) {
   
   # Display dives table
   output$responses_dives <- DT::renderDataTable({
-    table <- dives_df() %>% select(-row_id)
+    table <- dives_df() %>% select(-row_id) 
     table <- datatable(table, rownames = FALSE, selection = 'single',
                        options = list(searching = FALSE, lengthChange = FALSE)
     )
@@ -227,7 +220,7 @@ server <- function(input, output, session) {
                                 leg = input$dive_cruiseleg,
                                 name = input$dive_name, 
                                 pilot = input$dive_pilot,
-                                start_time = as.character(format(input$dive_starttime, format='%Y-%m-%dT')),
+                                start_time = input$dive_starttime,
                                 end_time = input$dive_endtime,
                                 site_name = input$dive_sitename,
                                 dive_config = input$dive_diveconfig,
@@ -263,18 +256,18 @@ server <- function(input, output, session) {
     observe({
       mandatoryFilled <- vapply(fields ,function(x) {!is.null(input[[x]]) && input[[x]] != ''}, logical(1))
       mandatoryFilled <- all(mandatoryFilled)
-      
       shinyjs::toggleState(id = paste0('submit_',table), condition = mandatoryFilled)
     })
   }
   
-  
   # Set mandatory fields
-  obsFieldsMandatory(table='dives', fields=c('cruise_name', 'cruise_leg','dive_name', 
-                                             'dive_pilot', 'dive_diveconfig','dive_objective'))
-  obsFieldsMandatory(table='cruise', fields=c('cruise_name', 'cruise_leg'))
+  obsFieldsMandatory(table='dives', fields=c('dive_cruisename', 'dive_cruiseleg', 'dive_name',
+                                             'dive_pilot', 'dive_diveconfig','dive_objective',
+                                             'dive_starttime', 'dive_endtime'))
+  obsFieldsMandatory(table='cruise', fields=c('cruise_name', 'cruise_leg', 'cruise_objective'))
+
   
-  
+
   # Form for dive data entry
   dives_entryform <- function(button_id){
     showModal(
@@ -292,10 +285,10 @@ server <- function(input, output, session) {
                   textInput('dive_cruiseleg', labelMandatory('Leg'),  cruise_df()$leg[nrow(cruise_df())])
                 ),
                 splitLayout(
-                  cellWidths = c('200px', '200px'),
+                  cellWidths = c('250px', '150px'),
                   cellArgs = list(style = 'vertical-align: top'),
-                  textInput('dive_name', labelUnique('Dive name'),  ''),
-                  textInput('dive_sitename', 'Site name', ''),
+                  textInput('dive_name', labelMandatory('Dive name'),  ''),
+                  actionButton('check_dives', 'Check', icon = icon('key')),
                 ),
                 splitLayout(
                   cellWidths = c('200px', '200px'),
@@ -317,13 +310,13 @@ server <- function(input, output, session) {
                 ),
                 tags$style(type='text/css', '#set_dive_starttime { width:100%; margin-top: 25px}'),
                 tags$style(type='text/css', '#set_dive_endtime { width:100%; margin-top: 25px}'),
+                tags$style(type='text/css', '#check_dives { width:100%; margin-top: 25px}'),
+                textInput('dive_sitename', 'Site name', ''),
                 textInput('dive_objective', labelMandatory('Objective'), ''),
                 textInput('dive_summary', 'Summary', ''),
                 textInput('dive_note', 'Note', ''),
                 helpText(labelMandatory(''), paste('Mandatory field')),
-                helpText(labelUnique(''), paste('Unique key')),
-                actionButton('check_dives', 'Check', icon = icon("refresh")),
-                actionButton(button_id, 'Submit', class = "btn-warning")
+                actionButton(button_id, 'Submit', class = 'btn-warning')
               ),
               easyClose = FALSE
             )
@@ -351,7 +344,7 @@ server <- function(input, output, session) {
                 textInput('cruise_summary', 'Summary', ''),
                 textInput('cruise_note', 'Note', ''),
                 helpText(labelMandatory(''), paste('Mandatory field.')),
-                actionButton(button_id, 'Submit')
+                actionButton(button_id, 'Submit', class = 'btn-warning')
               ),
               easyClose = FALSE
             )
@@ -359,6 +352,33 @@ server <- function(input, output, session) {
       )
     )
   }
+  
+  
+  ##################################
+  #   Start and End time buttons   #
+  ##################################
+  
+  # Make reactive
+  datetimes <- reactiveValues(dive_start = '',
+                              dive_end = '')
+
+  # Event observers for datetimes
+  observeEvent(input$set_dive_starttime,{
+    datetimes$dive_start <- as.character(format(Sys.time(), format='%Y-%m-%dT-%TZ', tz='GMT'))
+  })
+  observeEvent(input$set_dive_endtime,{
+    datetimes$dive_end <- as.character(format(Sys.time(), format='%Y-%m-%dT-%TZ', tz='GMT'))
+  })
+
+  # Generate the textInput for datetimes
+  output$out_dive_starttime <- renderUI({
+    textInput('dive_starttime', labelMandatory('Start time'), datetimes$dive_start)
+  })
+  output$out_dive_endtime <- renderUI({
+    textInput('dive_endtime', labelMandatory('End time'), datetimes$dive_end)
+  })
+
+
   
   
   ##############################
@@ -378,15 +398,25 @@ server <- function(input, output, session) {
     
     # Observe event for opening the delete modal
     observeEvent(input[[paste0('delete_button_', table)]], priority = 20,{
-      showModal(modalDialog(
-        title = 'Delete selected row?',
-        'Warning: This action cannot be undone!',
-        footer = tagList(
-          actionButton(paste0('yes_delete_',table), 'Yes, Delete'),
-          modalButton('Cancel')
-        ), 
-        easyClose = TRUE
-      ))
+      showModal(
+        # If row selected
+        if(length(input[[paste0('responses_',table,'_rows_selected')]])==1 ){
+          modalDialog(
+            title = 'Delete selected row?',
+            'Warning: This action cannot be undone!',
+            footer = tagList(
+              actionButton(paste0('yes_delete_',table), 'Yes, Delete'),
+              modalButton('Cancel')
+            ), 
+            easyClose = TRUE
+          )
+        } else {
+          modalDialog(
+            paste('Please select a row' ),
+            easyClose = TRUE
+          )
+        }
+      )
     })
     
     # Observe event for deleting selected rows
@@ -403,10 +433,15 @@ server <- function(input, output, session) {
     # Observe event for submiting form data, append to db and reset _entryform
     # FormData() table needs to be called within observe event to be reactive
     observeEvent(input[[paste0('submit_', table)]], priority = 20,{
+      # Get form data
       formdata <- get(paste0(table,'_FormData'))
+      # Query
       quary <- sqlAppendTable(pool, table, formdata(), row.names = FALSE)
       dbExecute(pool, quary)
+      # Reset 
       shinyjs::reset(paste0(table,'_entryform'))
+      datetimes$dive_start <- ''
+      datetimes$dive_end <- ''
       removeModal()
     })
   }
@@ -417,48 +452,23 @@ server <- function(input, output, session) {
   obsEvents(table='cruise')
   
   
-  ##################################
-  #   Start and End time buttons   #
-  ##################################
-
-  # Starting empty field
-  emptytime <- ''
-  
-  # Make reactive
-  datetimes <- reactiveValues(dive_start = emptytime,
-                              dive_end = emptytime)
-  
-  # Event observers for datetimes
-  observeEvent(input$set_dive_starttime,{
-    datetimes$dive_start <- as.character(format(Sys.time(), format='%Y-%m-%dT-%TZ', tz='GMT'))
-  })
-  observeEvent(input$set_dive_endtime,{
-    datetimes$dive_end <- as.character(format(Sys.time(), format='%Y-%m-%dT-%TZ', tz='GMT'))
-    })
-  
-  # Generate the textInput for datetimes
-  output$out_dive_starttime <- renderUI({
-    textInput('dive_starttime', 'Start time:', datetimes$dive_start)
-  })
-  output$out_dive_endtime <- renderUI({
-    textInput('dive_endtime', 'End time:', datetimes$dive_end)
-  })
-
 
   
 ##################################
 #    Dives Checks and  Edit      #
 ##################################
 
-  # Dive name must be unique, toggle submit until unique
-  # !!! Other options could be change colour or text on check button to indicate a pass,
-  # while also toggling submit
+
+  # Check for unique dive names
   observeEvent(input$check_dives,{
-    cond <-!(input$dive_name %in% dives_df()$name)
-    shinyjs::toggleState(id = 'submit_dives', condition = cond)
+    if( !(input$dive_name %in% dives_df()$name) ){
+      updateActionButton(session, 'check_dives', label='Checked', icon=icon('check'))
+      shinyjs::addClass(id = 'check_dives', class='btn-success')
+    } else {
+      updateActionButton(session, 'check_dives', label='Duplicate, try again', icon=icon('xmark'))
+      shinyjs::removeClass(id = 'check_dives', class='btn-success')
+    }
   })
-  
-  
 
   # Use this code to create sub-form for transect that opens from dive form
   
@@ -505,26 +515,36 @@ server <- function(input, output, session) {
   
 
 # Edit data
+# !!! Odd behaviour when you start app and open form, start and end times will appear empty
+  #   if you dismiss the form and open the row again it will show the correct datetimes
 # Update form values in the selected row.
-observeEvent(input$edit_button_dives, priority = 20,{
-  # Fetch db data
-  SQL_df <- dbReadTable(pool, 'dives')
-  # Form
-  dives_entryform('submit_edit_dives')
-  # Update
-  updateTextInput(session, 'dive_cruisename', value = SQL_df[input$responses_dives_rows_selected, 'cruise_name'])
-  updateTextInput(session,'dive_cruiseleg', value = SQL_df[input$responses_dives_rows_selected, 'leg'])
-  updateTextInput(session,'dive_name', value = SQL_df[input$responses_dives_rows_selected, 'name'])
-  updateTextInput(session,'dive_sitename',  value = SQL_df[input$responses_dives_rows_selected, 'site_name'])
-  updateSelectInput(session,'dive_diveconfig',  selected = SQL_df[input$responses_dives_rows_selected, 'dive_config'])
-  updateSelectInput(session,'dive_pilot',  selected = SQL_df[input$responses_dives_rows_selected, 'pilot'])
-  updateTextInput(session,'dive_starttime', value = SQL_df[input$responses_dives_rows_selected, 'start_time'])
-  updateTextInput(session,'dive_endtime', value = SQL_df[input$responses_dives_rows_selected, 'end_time'])
-  updateTextInput(session,'dive_objective', value = SQL_df[input$responses_dives_rows_selected, 'objective'])
-  updateTextInput(session,'dive_summary', value = SQL_df[input$responses_dives_rows_selected, 'summary'])
-  updateTextInput(session, 'dive_note', value = SQL_df[input$responses_dives_rows_selected, 'note'])
-  
-})
+  observeEvent(input$edit_button_dives, priority = 20,{
+    # Fetch db data
+    SQL_df <- dbReadTable(pool, 'dives')
+    # Warnings for selection
+    showModal(
+      if(length(input$responses_dives_rows_selected) < 1){
+        modalDialog(
+          paste('Please select a row' ),easyClose = TRUE)
+      })
+    # If one row is selected open form and update
+    if(length(input$responses_dives_rows_selected) == 1 ){
+      # Form
+      dives_entryform('submit_edit_dives')
+      # Update
+      updateTextInput(session, 'dive_cruisename', value = SQL_df[input$responses_dives_rows_selected, 'cruise_name'])
+      updateTextInput(session,'dive_cruiseleg', value = SQL_df[input$responses_dives_rows_selected, 'leg'])
+      updateTextInput(session,'dive_name', value = SQL_df[input$responses_dives_rows_selected, 'name'])
+      updateTextInput(session,'dive_sitename',  value = SQL_df[input$responses_dives_rows_selected, 'site_name'])
+      updateSelectInput(session,'dive_diveconfig',  selected = SQL_df[input$responses_dives_rows_selected, 'dive_config'])
+      updateSelectInput(session,'dive_pilot',  selected = SQL_df[input$responses_dives_rows_selected, 'pilot'])
+      updateTextInput(session,'dive_starttime', value = SQL_df[input$responses_dives_rows_selected, 'start_time'])
+      updateTextInput(session,'dive_endtime', value = SQL_df[input$responses_dives_rows_selected, 'end_time'])
+      updateTextInput(session,'dive_objective', value = SQL_df[input$responses_dives_rows_selected, 'objective'])
+      updateTextInput(session,'dive_summary', value = SQL_df[input$responses_dives_rows_selected, 'summary'])
+      updateTextInput(session, 'dive_note', value = SQL_df[input$responses_dives_rows_selected, 'note'])
+    }
+  })
 
 # Updates the selected row with the values that were entered in the form, based on the row last clicked.
 observeEvent(input$submit_edit_dives, priority = 20, {
@@ -545,6 +565,9 @@ observeEvent(input$submit_edit_dives, priority = 20, {
                          input$dive_objective,
                          input$dive_summary,
                          input$dive_note))
+  # Reset
+  datetimes$dive_start <- ''
+  datetimes$dive_end <- ''
   removeModal()
   
 })
@@ -560,6 +583,13 @@ observeEvent(input$submit_edit_dives, priority = 20, {
 observeEvent(input$edit_button_cruise, priority = 20,{
   # Fetch db data
   SQL_df <- dbReadTable(pool, 'cruise')
+  # Warnings for selection
+  showModal(
+    if(length(input$responses_cruise_rows_selected) < 1){
+      modalDialog(
+        paste('Please select a row' ),easyClose = TRUE)
+    })     # If one row is selected open form and update
+  if(length(input$responses_cruise_rows_selected) == 1 ){
   # Form
   cruise_entryform('submit_edit_cruise')
   # Update
@@ -568,7 +598,7 @@ observeEvent(input$edit_button_cruise, priority = 20,{
   updateTextInput(session,'cruise_objective', value = SQL_df[input$responses_cruise_rows_selected, 'objective'])
   updateTextInput(session,'cruise_summary', value = SQL_df[input$responses_cruise_rows_selected, 'summary'])
   updateTextInput(session, 'cruise_note', value = SQL_df[input$responses_cruise_rows_selected, 'note'])
-  
+  }
 })
 
 # Updates the selected row with the values that were entered in the form, based on the row last clicked.
