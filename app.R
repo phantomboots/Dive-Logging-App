@@ -1,3 +1,25 @@
+###############################################################################
+#
+# Authors:      Jessica Nephin
+# Affiliation:  Fisheries and Oceans Canada (DFO)
+# Contact:      e-mail: jessica.nephin@dfo-mpo.gc.ca
+#
+# Overview:
+# A shiny app for dive and transect logging in the field. Created for the 
+# Non-Destructive Survey Tool program. The goal is to collect all relevant 
+# metadata associated with ROV dives.
+#
+# Requirements:
+# *  SQLite
+# *  R version 4.2.1 or greater
+#
+# Notes: Based on this example
+# https://www.nielsvandervelden.com/blog/editable-datatables-in-r-shiny-using-sql/
+#
+###############################################################################
+
+
+# Packages
 library(shiny)
 library(DT)
 library(RSQLite)
@@ -7,14 +29,6 @@ library(uuid)
 library(dplyr)
 library(shinydashboard)
 library(purrr)
-
-# Based on this example
-# https://www.nielsvandervelden.com/blog/editable-datatables-in-r-shiny-using-sql/
-
-
-# still to do
-# - make certain fields unique keys
-# - somehow need to have transects as a subform of dive
 
 
 ##############################
@@ -78,7 +92,9 @@ sidebar <- dashboardSidebar(
     menuItem('Equipment list', tabName = 'equiptab', icon = icon('list-ul')),
     menuItem('Equipment configurations', tabName = 'econfigtab', icon = icon('screwdriver-wrench')),
     menuItem('Dive configurations', tabName = 'dconfigtab', icon = icon('sliders')),
-    menuItem('Dives', tabName = 'divetab', icon = icon('water'))
+    menuItem('Dives', tabName = 'divetab', icon = icon('water')),
+    menuItem('Transects', tabName = 'trantab', icon = icon('arrow-right'))
+    
   )
 )
 # Body
@@ -97,6 +113,21 @@ body <- body <- dashboardBody(
               br(),
               fluidRow(width='100%',
                        dataTableOutput('responses_dives', width = '100%')
+              )
+            )
+    ),
+    tabItem(tabName = 'trantab',
+            h2('Transects'),
+            fluidPage(
+              shinyjs::useShinyjs(),
+              shinyjs::inlineCSS(appCSS),
+              fluidRow(
+                actionButton('edit_button_transects', 'Edit', icon('edit')),
+                actionButton('delete_button_transects', 'Delete', icon('trash-alt'))
+              ),
+              br(),
+              fluidRow(width='100%',
+                       dataTableOutput('responses_transects', width = '100%')
               )
             )
     ),
@@ -189,6 +220,7 @@ server <- function(input, output, session) {
   
   # Make tables reactive
   dives_df <- makeReactive('dives')
+  transects_df <- makeReactive('transects')
   cruise_df <- makeReactive('cruise')
   
   
@@ -199,6 +231,15 @@ server <- function(input, output, session) {
                        options = list(searching = FALSE, lengthChange = FALSE)
     )
   })
+  
+  # Display transects table
+  output$responses_transects <- DT::renderDataTable({
+    table <- transects_df() %>% select(-row_id) 
+    table <- datatable(table, rownames = FALSE, selection = 'single',
+                       options = list(searching = FALSE, lengthChange = FALSE)
+    )
+  })
+  
   # Display cruise table
   output$responses_cruise <- DT::renderDataTable({
     table <- cruise_df() %>% select(-row_id)
@@ -213,7 +254,9 @@ server <- function(input, output, session) {
   #        Form data           #
   ##############################
   
-  # Save form data into data_frame format, reactive to changes in input
+  # Save form data as data.frame, reactive to changes in input
+  
+  # Dives
   dives_FormData <- reactive({
     divesFormData <- data.frame(row_id = UUIDgenerate(),
                                 cruise_name = input$dive_cruisename,
@@ -231,8 +274,24 @@ server <- function(input, output, session) {
     return(divesFormData)
   })
   
+  # Transects
+  transects_FormData <- reactive({
+    transectsFormData <- data.frame(row_id = UUIDgenerate(),
+                                    cruise_name = input$transect_cruisename,
+                                    leg = input$transect_cruiseleg,
+                                    dive_name = input$transect_divename, 
+                                    name = input$transect_name, 
+                                    start_time = input$transect_starttime,
+                                    end_time = input$transect_endtime,
+                                    objective = input$transect_objective,
+                                    summary = input$transect_summary,
+                                    note = input$transect_note,
+                                    stringsAsFactors = FALSE)
+    return(transectsFormData)
+  })
   
-  # Save form data into data_frame format, reactive to changes in input
+  
+  # Cruise
   cruise_FormData <- reactive({
     cruiseFormData <- data.frame(row_id = UUIDgenerate(),
                                  name = input$cruise_name,
@@ -261,9 +320,10 @@ server <- function(input, output, session) {
   }
   
   # Set mandatory fields
-  obsFieldsMandatory(table='dives', fields=c('dive_cruisename', 'dive_cruiseleg', 'dive_name',
-                                             'dive_pilot', 'dive_diveconfig','dive_objective',
-                                             'dive_starttime', 'dive_endtime'))
+  obsFieldsMandatory(table='dives', fields=c('dive_cruisename', 'dive_cruiseleg', 'dive_name', 'dive_pilot', 
+                                             'dive_diveconfig','dive_starttime', 'dive_endtime'))
+  obsFieldsMandatory(table='transects', fields=c('transect_cruisename', 'transect_cruiseleg', 'transect_divename', 
+                                                 'transect_name','transect_starttime', 'transect_endtime'))
   obsFieldsMandatory(table='cruise', fields=c('cruise_name', 'cruise_leg', 'cruise_objective'))
 
   
@@ -272,6 +332,7 @@ server <- function(input, output, session) {
   dives_entryform <- function(button_id){
     showModal(
       modalDialog(
+        h2('Dive'),
         div(id=('dives_entryform'),
             tags$head(tags$style('.modal-dialog{ width:450px}')),
             tags$head(tags$style(HTML('.shiny-split-layout > div {overflow: visible}'))),
@@ -302,6 +363,8 @@ server <- function(input, output, session) {
                   uiOutput('out_dive_starttime'),
                   actionButton('set_dive_starttime', 'Start', icon = icon("clock"), class = "btn-primary"),
                 ),
+                actionButton('add_button_transects', 'Add Transect', icon('plus'), class = 'btn-warning'),
+                br(), br(),
                 splitLayout(
                   cellWidths = c('300px', '100px'),
                   cellArgs = list(style = 'vertical-align: top'),
@@ -312,9 +375,59 @@ server <- function(input, output, session) {
                 tags$style(type='text/css', '#set_dive_endtime { width:100%; margin-top: 25px}'),
                 tags$style(type='text/css', '#check_dives { width:100%; margin-top: 25px}'),
                 textInput('dive_sitename', 'Site name', ''),
-                textInput('dive_objective', labelMandatory('Objective'), ''),
+                textInput('dive_objective', 'Objective', ''),
                 textInput('dive_summary', 'Summary', ''),
                 textInput('dive_note', 'Note', ''),
+                helpText(labelMandatory(''), paste('Mandatory field')),
+                actionButton(button_id, 'Submit', class = 'btn-warning')
+              ),
+              easyClose = FALSE
+            )
+        )
+      )
+    )
+  }
+  
+  # Form for transect data entry
+  transects_entryform <- function(button_id){
+    showModal(
+      modalDialog(
+        h2('Transect'),
+        div(id=('transects_entryform'),
+            tags$head(tags$style('.modal-dialog{ width:450px}')),
+            tags$head(tags$style(HTML('.shiny-split-layout > div {overflow: visible}'))),
+            fluidPage(
+              fluidRow(
+                splitLayout(
+                  cellWidths = c('250px', '150px'),
+                  cellArgs = list(style = 'vertical-align: top'),
+                  # Use the last record for cruise name and leg as defaults
+                  textInput('transect_cruisename', labelMandatory('Cruise name'), dives_df()$cruise_name[nrow(dives_df())]),
+                  textInput('transect_cruiseleg', labelMandatory('Leg'),  dives_df()$leg[nrow(dives_df())])
+                ),
+                splitLayout(
+                  cellWidths = c('250px', '150px'),
+                  cellArgs = list(style = 'vertical-align: top'),
+                  textInput('transect_divename', labelMandatory('Dive name'), dives_df()$name[nrow(dives_df())]),
+                  textInput('transect_name', labelMandatory('Name'),  paste0(dives_df()$name[nrow(dives_df())],'_1'))
+                ),
+                splitLayout(
+                  cellWidths = c('300px', '100px'),
+                  cellArgs = list(style = 'vertical-align: top'),
+                  uiOutput('out_transect_starttime'),
+                  actionButton('set_transect_starttime', 'Start', icon = icon("clock"), class = "btn-primary"),
+                ),
+                splitLayout(
+                  cellWidths = c('300px', '100px'),
+                  cellArgs = list(style = 'vertical-align: top'),
+                  uiOutput('out_transect_endtime'),
+                  actionButton('set_transect_endtime', 'End', icon = icon("clock"), class = "btn-primary"),
+                ),
+                tags$style(type='text/css', '#set_transect_starttime { width:100%; margin-top: 25px}'),
+                tags$style(type='text/css', '#set_transect_endtime { width:100%; margin-top: 25px}'),
+                textInput('transect_objective', 'Objective', ''),
+                textInput('transect_summary', 'Summary', ''),
+                textInput('transect_note', 'Note', ''),
                 helpText(labelMandatory(''), paste('Mandatory field')),
                 actionButton(button_id, 'Submit', class = 'btn-warning')
               ),
@@ -360,8 +473,12 @@ server <- function(input, output, session) {
   
   # Make reactive
   datetimes <- reactiveValues(dive_start = '',
-                              dive_end = '')
+                              dive_end = '',
+                              transect_start = '',
+                              transect_end = '')
 
+  # For dives
+  
   # Event observers for datetimes
   observeEvent(input$set_dive_starttime,{
     datetimes$dive_start <- as.character(format(Sys.time(), format='%Y-%m-%dT-%TZ', tz='GMT'))
@@ -378,7 +495,24 @@ server <- function(input, output, session) {
     textInput('dive_endtime', labelMandatory('End time'), datetimes$dive_end)
   })
 
-
+ # For transects
+  
+  # Event observers for datetimes
+  observeEvent(input$set_transect_starttime,{
+    datetimes$transect_start <- as.character(format(Sys.time(), format='%Y-%m-%dT-%TZ', tz='GMT'))
+  })
+  observeEvent(input$set_transect_endtime,{
+    datetimes$transect_end <- as.character(format(Sys.time(), format='%Y-%m-%dT-%TZ', tz='GMT'))
+  })
+  
+  # Generate the textInput for datetimes
+  output$out_transect_starttime <- renderUI({
+    textInput('transect_starttime', labelMandatory('Start time'), datetimes$transect_start)
+  })
+  output$out_transect_endtime <- renderUI({
+    textInput('transect_endtime', labelMandatory('End time'), datetimes$transect_end)
+  })
+  
   
   
   ##############################
@@ -393,6 +527,9 @@ server <- function(input, output, session) {
     # Observe event for opening the form, high priority to ensure no reactive values
     # are updated until the event is finished.
     observeEvent(input[[paste0('add_button_', table)]], priority = 20,{
+      # If add transects button is clicked, then same dive forms data before opening transect form
+      if(table == 'transects')  closed_dive <<- dives_FormData()
+      # Open form
       get(paste0(table,'_entryform'))(paste0('submit_', table))
     })
     
@@ -440,8 +577,14 @@ server <- function(input, output, session) {
       dbExecute(pool, quary)
       # Reset 
       shinyjs::reset(paste0(table,'_entryform'))
-      datetimes$dive_start <- ''
-      datetimes$dive_end <- ''
+      if( table == 'dives'){
+        datetimes$dive_start <- ''
+        datetimes$dive_end <- ''
+      }
+      if( table == 'transects'){
+        datetimes$transect_start <- ''
+        datetimes$transect_end <- ''
+      }
       removeModal()
     })
   }
@@ -449,15 +592,15 @@ server <- function(input, output, session) {
   
   # Dive observer events
   obsEvents(table='dives')
+  obsEvents(table='transects')
   obsEvents(table='cruise')
   
   
 
   
-##################################
-#    Dives Checks and  Edit      #
-##################################
-
+#######################################
+#     Dives Checks, Edit, Restore     #
+#######################################
 
   # Check for unique dive names
   observeEvent(input$check_dives,{
@@ -469,50 +612,6 @@ server <- function(input, output, session) {
       shinyjs::removeClass(id = 'check_dives', class='btn-success')
     }
   })
-
-  # Use this code to create sub-form for transect that opens from dive form
-  
-  # # Dive names must be unique, check and open new model with result
-  # observeEvent(input$check_dives,{ 
-  #   # Save form data temporarily
-  #   tmp <<- dives_FormData()
-  #   showModal(
-  #     if( input$dive_name %in% dives_df()$name ){
-  #       modalDialog(
-  #         title = "Error!",
-  #         "Dive name must be a unique value. Try again.",
-  #         easyClose=FALSE,
-  #         footer = actionButton("restoreModal", label = "Okay")
-  #       )
-  #     } else {
-  #       modalDialog(
-  #         title = "Success!",
-  #         "All checks have passed",
-  #         easyClose=FALSE,
-  #         footer = actionButton("restoreModal", label = "Okay")
-  #       )
-  #     }
-  #   )
-  # })
-  # # Restore dive entry form modal, after check is performed
-  # observeEvent(input$restoreModal, {
-  #   # Open form
-  #   dives_entryform('submit_dives')
-  #   # Update
-  #   updateTextInput(session, 'dive_cruisename', value = tmp[1, 'cruise_name'])
-  #   updateTextInput(session,'dive_cruiseleg', value = tmp[1, 'leg'])
-  #   updateTextInput(session,'dive_name', value = tmp[1, 'name'])
-  #   updateTextInput(session,'dive_sitename',  value = tmp[1, 'site_name'])
-  #   updateSelectInput(session,'dive_diveconfig',  selected = tmp[1, 'dive_config'])
-  #   updateSelectInput(session,'dive_pilot',  selected = tmp[1, 'pilot'])
-  #   updateDateInput(session,'dive_starttime', value = tmp[1, 'start_time'])
-  #   updateDateInput(session,'dive_endtime', value = tmp[1, 'end_time'])
-  #   updateTextInput(session,'dive_objective', value = tmp[1, 'objective'])
-  #   updateTextInput(session,'dive_summary', value = tmp[1, 'summary'])
-  #   updateTextInput(session, 'dive_note', value = tmp[1, 'note'])
-  #   
-  # })
-  
 
 # Edit data
 # !!! Odd behaviour when you start app and open form, start and end times will appear empty
@@ -572,6 +671,80 @@ observeEvent(input$submit_edit_dives, priority = 20, {
   
 })
 
+
+# Restore dive entry form modal, after submitting transect record
+observeEvent(input$submit_transects, {
+  # Open form
+  dives_entryform('submit_dives')
+  # Update
+  updateTextInput(session, 'dive_cruisename', value = closed_dive[1, 'cruise_name'])
+  updateTextInput(session,'dive_cruiseleg', value = closed_dive[1, 'leg'])
+  updateTextInput(session,'dive_name', value = closed_dive[1, 'name'])
+  updateTextInput(session,'dive_sitename',  value = closed_dive[1, 'site_name'])
+  updateSelectInput(session,'dive_diveconfig',  selected = closed_dive[1, 'dive_config'])
+  updateSelectInput(session,'dive_pilot',  selected = closed_dive[1, 'pilot'])
+  updateTextInput(session,'dive_starttime', value = closed_dive[1, 'start_time'])
+  updateTextInput(session,'dive_endtime', value = closed_dive[1, 'end_time'])
+  updateTextInput(session,'dive_objective', value = closed_dive[1, 'objective'])
+  updateTextInput(session,'dive_summary', value = closed_dive[1, 'summary'])
+  updateTextInput(session, 'dive_note', value = closed_dive[1, 'note'])
+
+})
+
+
+##################################
+#         Transects Edit         #
+##################################
+
+# Edit data
+observeEvent(input$edit_button_transects, priority = 20,{
+  # Fetch db data
+  SQL_df <- dbReadTable(pool, 'transects')
+  # Warnings for selection
+  showModal(
+    if(length(input$responses_transects_rows_selected) < 1){
+      modalDialog(
+        paste('Please select a row' ),easyClose = TRUE)
+    })
+  # If one row is selected open form and update
+  if(length(input$responses_transects_rows_selected) == 1 ){
+    # Form
+    transects_entryform('submit_edit_transects')
+    # Update
+    updateTextInput(session, 'transect_cruisename', value = SQL_df[input$responses_transects_rows_selected, 'cruise_name'])
+    updateTextInput(session,'transect_cruiseleg', value = SQL_df[input$responses_transects_rows_selected, 'leg'])
+    updateTextInput(session,'transect_divename', value = SQL_df[input$responses_transects_rows_selected, 'dive_name'])
+    updateTextInput(session,'transect_name',  value = SQL_df[input$responses_transects_rows_selected, 'name'])
+    updateTextInput(session,'transect_starttime', value = SQL_df[input$responses_transects_rows_selected, 'start_time'])
+    updateTextInput(session,'transect_endtime', value = SQL_df[input$responses_transects_rows_selected, 'end_time'])
+    updateTextInput(session,'transect_objective', value = SQL_df[input$responses_transects_rows_selected, 'objective'])
+    updateTextInput(session,'transect_summary', value = SQL_df[input$responses_transects_rows_selected, 'summary'])
+    updateTextInput(session, 'transect_note', value = SQL_df[input$responses_transects_rows_selected, 'note'])
+  }
+})
+
+# Updates the selected row with the values that were entered in the form, based on the row last clicked.
+observeEvent(input$submit_edit_transects, priority = 20, {
+  # Get db data
+  SQL_df <- dbReadTable(pool, 'transects')
+  row_id <- SQL_df[input$responses_transects_row_last_clicked, 'row_id']
+  dbExecute(pool, sprintf('UPDATE "transects" SET "cruise_name" = ?, "leg" = ?, "dive_name" = ?, "name" = ?, "start_time" = ?,
+                            "end_time" = ?, "objective" = ?, "summary" = ?, "note" = ? WHERE "row_id" = ("%s")', row_id),
+            param = list(input$transect_cruisename,
+                         input$transect_cruiseleg,
+                         input$transect_divename,
+                         input$transect_name,
+                         input$transect_starttime,
+                         input$transect_endtime,
+                         input$transect_objective,
+                         input$transect_summary,
+                         input$transect_note))
+  # Reset
+  datetimes$transect_start <- ''
+  datetimes$transect_end <- ''
+  removeModal()
+  
+})
 
 ###################################
 #           Cruise Edit           #
