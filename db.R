@@ -1,4 +1,8 @@
+# Build base database
+
+# Packages
 library(RSQLite)
+library(uuid)
 
 # Name of db
 dbname <- 'divelogging-db.sqlite'
@@ -13,6 +17,10 @@ cruise <- data.frame(row_id=character(),name=character(0),leg=character(0),
 # Load people and equipment list
 people <- read.csv('people.csv')
 equipment <- read.csv('equipment.csv')
+
+# Add row_id fields to people and equip lists
+people <- data.frame(row_id=UUIDgenerate(n=nrow(people)), people)
+equipment <- data.frame(row_id=UUIDgenerate(n=nrow(equipment)), equipment)
 
 # Create empty table to fill
 dives <- data.frame(row_id=character(),cruise_name=character(0),leg=character(0),name=character(0),

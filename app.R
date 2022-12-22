@@ -20,7 +20,6 @@
 
 
 ## To do
-# - Add equipment table, make editable
 # - Add configuration tool
 # - Move issues in annotations to gitlab issues 
 
@@ -51,7 +50,7 @@ dbname <- 'divelogging-db.sqlite'
 db <- dbConnect(RSQLite::SQLite(), dbname)
 # Load all tables from db into workspace
 alltabs <- lapply(setNames(nm = dbListTables(db)), dbReadTable, conn = db)
-list2env(alltabs, envir=environment())
+#list2env(alltabs, envir=environment())
 dbDisconnect(db)
 
 
@@ -98,7 +97,7 @@ header <- dashboardHeader(title = 'NDST Dive Logging App',
 sidebar <- dashboardSidebar( 
   sidebarMenu(
     menuItem('Cruise', tabName = 'cruisetab', icon = icon('ship')),
-    menuItem('People', tabName = 'peopletab', icon = icon('user-group')),
+    menuItem('Personnel', tabName = 'peopletab', icon = icon('user-group')),
     menuItem('Equipment list', tabName = 'equiptab', icon = icon('list-ul')),
     menuItem('Equipment configurations', tabName = 'econfigtab', icon = icon('screwdriver-wrench')),
     menuItem('Dive configurations', tabName = 'dconfigtab', icon = icon('sliders')),
@@ -142,7 +141,7 @@ body <- body <- dashboardBody(
             )
     ),
     tabItem(tabName = 'cruisetab',
-            h2('Cruise name and legs'),
+            h2('Cruise'),
             fluidPage(
               shinyjs::useShinyjs(),
               shinyjs::inlineCSS(appCSS),
@@ -158,10 +157,36 @@ body <- body <- dashboardBody(
             )
     ),
     tabItem(tabName = 'peopletab',
-            h2('Personnel')
+            h2('Personnel'),
+            fluidPage(
+              shinyjs::useShinyjs(),
+              shinyjs::inlineCSS(appCSS),
+              fluidRow(
+                actionButton('add_button_people', 'Add', icon('plus')),
+                actionButton('edit_button_people', 'Edit', icon('edit')),
+                actionButton('delete_button_people', 'Delete', icon('trash-alt'))
+              ),
+              br(),
+              fluidRow(width='100%',
+                       dataTableOutput('responses_people', width = '100%')
+              )
+            )
     ),
     tabItem(tabName = 'equiptab',
-            h2('Equipment list')
+            h2('Equipment list'),
+            fluidPage(
+              shinyjs::useShinyjs(),
+              shinyjs::inlineCSS(appCSS),
+              fluidRow(
+                actionButton('add_button_equipment', 'Add', icon('plus')),
+                actionButton('edit_button_equipment', 'Edit', icon('edit')),
+                actionButton('delete_button_equipment', 'Delete', icon('trash-alt'))
+              ),
+              br(),
+              fluidRow(width='100%',
+                       dataTableOutput('responses_equipment', width = '100%')
+              )
+            )
     ),
     tabItem(tabName = 'econfigtab',
             h2('Set instrument and platform configurations')
@@ -232,6 +257,8 @@ server <- function(input, output, session) {
   dives_df <- makeReactive('dives')
   transects_df <- makeReactive('transects')
   cruise_df <- makeReactive('cruise')
+  equipment_df <- makeReactive('equipment')
+  people_df <- makeReactive('people')
   
   
   # Display dives table
@@ -258,6 +285,21 @@ server <- function(input, output, session) {
     )
   })
   
+  # Display equipment table
+  output$responses_equipment <- DT::renderDataTable({
+    table <- equipment_df() %>% select(-row_id)
+    table <- datatable(table, rownames = FALSE, selection = 'single',
+                       options = list(searching = FALSE, lengthChange = FALSE)
+    )
+  })
+  
+  # Display personnel table
+  output$responses_people <- DT::renderDataTable({
+    table <- people_df() %>% select(-row_id)
+    table <- datatable(table, rownames = FALSE, selection = 'single',
+                       options = list(searching = FALSE, lengthChange = FALSE)
+    )
+  })
   
   
   ##############################
@@ -313,8 +355,31 @@ server <- function(input, output, session) {
     return(cruiseFormData)
   })
   
+  # equipment
+  equipment_FormData <- reactive({
+    equipmentFormData <- data.frame(row_id = UUIDgenerate(),
+                                    short_code = input$equip_shortcode,
+                                    brand = input$equip_brand,
+                                    model = input$equip_model,
+                                    serial_number = input$equip_serialnumber,
+                                    type = input$equip_type,
+                                    note = input$equip_note,
+                                    stringsAsFactors = FALSE)
+    return(equipmentFormData)
+  })
   
+  # people
+  people_FormData <- reactive({
+    peopleFormData <- data.frame(row_id = UUIDgenerate(),
+                                 initials = input$initials,
+                                 first_name = input$first_name,
+                                 last_name = input$last_name,
+                                 email = input$email,
+                                 stringsAsFactors = FALSE)
+    return(peopleFormData)
+  })
   
+
   ##############################
   #        Input forms         #
   ##############################
@@ -365,7 +430,7 @@ server <- function(input, output, session) {
                   cellWidths = c('200px', '200px'),
                   cellArgs = list(style = 'vertical-align: top'),
                   selectInput('dive_diveconfig', labelMandatory('Dive config'), c('d1','d2','d3')),
-                  selectInput('dive_pilot', labelMandatory('Pilot'), people$initials),
+                  selectInput('dive_pilot', labelMandatory('Pilot'), people_df()$initials),
                 ),
                 splitLayout(
                   cellWidths = c('300px', '100px'),
@@ -458,6 +523,7 @@ server <- function(input, output, session) {
   cruise_entryform <- function(button_id){
     showModal(
       modalDialog(
+        h2('Cruise'),
         div(id=('cruise_entryform'),
             tags$head(tags$style('.modal-dialog{ width:450px}')),
             tags$head(tags$style(HTML('.shiny-split-layout > div {overflow: visible}'))),
@@ -473,6 +539,54 @@ server <- function(input, output, session) {
                 textInput('cruise_summary', 'Summary', ''),
                 textInput('cruise_note', 'Note', ''),
                 helpText(labelMandatory(''), paste('Mandatory field.')),
+                actionButton(button_id, 'Submit', class = 'btn-warning')
+              ),
+              easyClose = FALSE
+            )
+        )
+      )
+    )
+  }
+  
+  # Form for equipment data entry
+  equipment_entryform <- function(button_id){
+    showModal(
+      modalDialog(
+        h2('Equipment'),
+        div(id=('equipment_entryform'),
+            tags$head(tags$style('.modal-dialog{ width:400px}')),
+            tags$head(tags$style(HTML('.shiny-split-layout > div {overflow: visible}'))),
+            fluidPage(
+              fluidRow(
+                textInput('equip_shortcode', 'Short code', ''),
+                textInput('equip_brand', 'Brand',  ''),
+                textInput('equip_model', 'Model', ''),
+                textInput('equip_serialnumber', 'Serial number', ''),
+                textInput('equip_type', 'Type', ''),
+                textInput('equip_note', 'Note', ''),
+                actionButton(button_id, 'Submit', class = 'btn-warning')
+              ),
+              easyClose = FALSE
+            )
+        )
+      )
+    )
+  }
+  
+  # Form for equipment data entry
+  people_entryform <- function(button_id){
+    showModal(
+      modalDialog(
+        h2('Personnel'),
+        div(id=('people_entryform'),
+            tags$head(tags$style('.modal-dialog{ width:400px}')),
+            tags$head(tags$style(HTML('.shiny-split-layout > div {overflow: visible}'))),
+            fluidPage(
+              fluidRow(
+                textInput('initials', 'Initials', ''),
+                textInput('first_name', 'First name',  ''),
+                textInput('last_name', 'Last name', ''),
+                textInput('email', 'Email', ''),
                 actionButton(button_id, 'Submit', class = 'btn-warning')
               ),
               easyClose = FALSE
@@ -611,7 +725,8 @@ server <- function(input, output, session) {
   obsEvents(table='dives')
   obsEvents(table='transects')
   obsEvents(table='cruise')
-  
+  obsEvents(table='equipment')
+  obsEvents(table='people')
   
 
   
@@ -637,7 +752,7 @@ server <- function(input, output, session) {
     req(input$submit_transects) 
     input$add_button_dives
     input$edit_button_dives
-    # If closed dive table is not empty
+    # If current dive table is empty
     if ( nrow(current_dive) == 0 ){
       out <- ''
     } else {
@@ -788,10 +903,10 @@ observeEvent(input$submit_edit_transects, priority = 20, {
   
 })
 
+
 ###################################
 #           Cruise Edit           #
 ###################################
-
 
 # Edit data
 # Update form values in the selected row.
@@ -833,7 +948,97 @@ observeEvent(input$submit_edit_cruise, priority = 20, {
 })
 
 
-}
+###################################
+#          Equipment Edit         #
+###################################
+
+# Edit data
+# Update form values in the selected row.
+observeEvent(input$edit_button_equipment, priority = 20,{
+  # Fetch db data
+  SQL_df <- dbReadTable(pool, 'equipment')
+  # Warnings for selection
+  showModal(
+    if(length(input$responses_equipment_rows_selected) < 1){
+      modalDialog(
+        paste('Please select a row' ),easyClose = TRUE)
+    })     # If one row is selected open form and update
+  if(length(input$responses_equipment_rows_selected) == 1 ){
+    # Form
+    equipment_entryform('submit_edit_equipment')
+    # Update
+    updateTextInput(session, 'equip_shortcode', value = SQL_df[input$responses_equipment_rows_selected, 'short_code'])
+    updateTextInput(session,'equip_brand', value = SQL_df[input$responses_equipment_rows_selected, 'brand'])
+    updateTextInput(session,'equip_model', value = SQL_df[input$responses_equipment_rows_selected, 'model'])
+    updateTextInput(session,'equip_serialnumber', value = SQL_df[input$responses_equipment_rows_selected, 'serial_number'])
+    updateTextInput(session, 'equip_type', value = SQL_df[input$responses_equipment_rows_selected, 'type'])
+    updateTextInput(session, 'equip_note', value = SQL_df[input$responses_equipment_rows_selected, 'note'])
+  }
+})
+
+# Updates the selected row with the values that were entered in the form, based on the row last clicked.
+observeEvent(input$submit_edit_equipment, priority = 20, {
+  # Get db data
+  SQL_df <- dbReadTable(pool, 'equipment')
+  row_id <- SQL_df[input$responses_equipment_row_last_clicked, 'row_id']
+  dbExecute(pool, sprintf('UPDATE "equipment" SET "short_code" = ?, "brand" = ?, "model" = ?, "serial_number" = ?,
+                            "type" = ?, "note" = ? WHERE "row_id" = ("%s")', row_id),
+            param = list(input$equip_shortcode,
+                         input$equip_brand,
+                         input$equip_model,
+                         input$equip_serialnumber,
+                         input$equip_type,
+                         input$equip_note))
+  removeModal()
+  
+})
+
+
+
+###################################
+#           People Edit           #
+###################################
+
+# Edit data
+# Update form values in the selected row.
+observeEvent(input$edit_button_people, priority = 20,{
+  # Fetch db data
+  SQL_df <- dbReadTable(pool, 'people')
+  # Warnings for selection
+  showModal(
+    if(length(input$responses_people_rows_selected) < 1){
+      modalDialog(
+        paste('Please select a row' ),easyClose = TRUE)
+    })     # If one row is selected open form and update
+  if(length(input$responses_people_rows_selected) == 1 ){
+    # Form
+    people_entryform('submit_edit_people')
+    # Update
+    updateTextInput(session, 'initials', value = SQL_df[input$responses_people_rows_selected, 'initials'])
+    updateTextInput(session,'first_name', value = SQL_df[input$responses_people_rows_selected, 'first_name'])
+    updateTextInput(session,'last_name', value = SQL_df[input$responses_people_rows_selected, 'last_name'])
+    updateTextInput(session,'email', value = SQL_df[input$responses_people_rows_selected, 'email'])
+  }
+})
+
+# Updates the selected row with the values that were entered in the form, based on the row last clicked.
+observeEvent(input$submit_edit_people, priority = 20, {
+  # Get db data
+  SQL_df <- dbReadTable(pool, 'people')
+  row_id <- SQL_df[input$responses_people_row_last_clicked, 'row_id']
+  dbExecute(pool, sprintf('UPDATE "people" SET "initials" = ?, "first_name" = ?, "last_name" = ?, "email" = ?
+                          WHERE "row_id" = ("%s")', row_id),
+            param = list(input$initials,
+                         input$first_name,
+                         input$last_name,
+                         input$email))
+  removeModal()
+  
+})
+
+
+
+} # End server
 
 
 ##############################
