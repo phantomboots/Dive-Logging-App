@@ -19,6 +19,16 @@
 ###############################################################################
 
 
+## To do
+# - Add equipment table, make editable
+# - Add configuration tool
+# - Move issues in annotations to gitlab issues 
+
+
+# Notes:
+# - when you delete a dive it does not delete any of its transects
+
+
 # Packages
 library(shiny)
 library(DT)
@@ -339,14 +349,14 @@ server <- function(input, output, session) {
             fluidPage(
               fluidRow(
                 splitLayout(
-                  cellWidths = c('250px', '150px'),
+                  cellWidths = c('200px', '200px'),
                   cellArgs = list(style = 'vertical-align: top'),
                   # Use the last record for cruise name and leg as defaults
                   textInput('dive_cruisename', labelMandatory('Cruise name'), cruise_df()$name[nrow(cruise_df())]),
                   textInput('dive_cruiseleg', labelMandatory('Leg'),  cruise_df()$leg[nrow(cruise_df())])
                 ),
                 splitLayout(
-                  cellWidths = c('250px', '150px'),
+                  cellWidths = c('200px', '200px'),
                   cellArgs = list(style = 'vertical-align: top'),
                   textInput('dive_name', labelMandatory('Dive name'),  ''),
                   actionButton('check_dives', 'Check', icon = icon('key')),
@@ -363,8 +373,13 @@ server <- function(input, output, session) {
                   uiOutput('out_dive_starttime'),
                   actionButton('set_dive_starttime', 'Start', icon = icon("clock"), class = "btn-primary"),
                 ),
-                actionButton('add_button_transects', 'Add Transect', icon('plus'), class = 'btn-warning'),
-                br(), br(),
+                splitLayout(
+                  cellWidths = c('150px', '250px'),
+                  cellArgs = list(style = 'vertical-align: top'),
+                  actionButton('add_button_transects', 'Add Transect', icon('plus'), class = 'btn-warning'),
+                  textOutput('Text_transect')
+                ),
+                br(), #br(),
                 splitLayout(
                   cellWidths = c('300px', '100px'),
                   cellArgs = list(style = 'vertical-align: top'),
@@ -374,6 +389,7 @@ server <- function(input, output, session) {
                 tags$style(type='text/css', '#set_dive_starttime { width:100%; margin-top: 25px}'),
                 tags$style(type='text/css', '#set_dive_endtime { width:100%; margin-top: 25px}'),
                 tags$style(type='text/css', '#check_dives { width:100%; margin-top: 25px}'),
+                tags$style(type='text/css', '#Text_transect { width:100%; margin-top: 5px; font-size: 16px}'),
                 textInput('dive_sitename', 'Site name', ''),
                 textInput('dive_objective', 'Objective', ''),
                 textInput('dive_summary', 'Summary', ''),
@@ -390,6 +406,7 @@ server <- function(input, output, session) {
   
   # Form for transect data entry
   transects_entryform <- function(button_id){
+    # Use the current record for cruise name and leg as defaults
     showModal(
       modalDialog(
         h2('Transect'),
@@ -399,17 +416,16 @@ server <- function(input, output, session) {
             fluidPage(
               fluidRow(
                 splitLayout(
-                  cellWidths = c('250px', '150px'),
+                  cellWidths = c('200px', '200px'),
                   cellArgs = list(style = 'vertical-align: top'),
-                  # Use the last record for cruise name and leg as defaults
-                  textInput('transect_cruisename', labelMandatory('Cruise name'), dives_df()$cruise_name[nrow(dives_df())]),
-                  textInput('transect_cruiseleg', labelMandatory('Leg'),  dives_df()$leg[nrow(dives_df())])
+                  textInput('transect_cruisename', labelMandatory('Cruise name'), current_dive[1, 'cruise_name']),
+                  textInput('transect_cruiseleg', labelMandatory('Leg'),  current_dive[1, 'leg'])
                 ),
                 splitLayout(
-                  cellWidths = c('250px', '150px'),
+                  cellWidths = c('200px', '200px'),
                   cellArgs = list(style = 'vertical-align: top'),
-                  textInput('transect_divename', labelMandatory('Dive name'), dives_df()$name[nrow(dives_df())]),
-                  textInput('transect_name', labelMandatory('Name'),  paste0(dives_df()$name[nrow(dives_df())],'_1'))
+                  textInput('transect_divename', labelMandatory('Dive name'), current_dive[1, 'name'] ),
+                  textInput('transect_name', labelMandatory('Transect name'),  paste0(current_dive[1, 'name'],'_1'))
                 ),
                 splitLayout(
                   cellWidths = c('300px', '100px'),
@@ -528,7 +544,8 @@ server <- function(input, output, session) {
     # are updated until the event is finished.
     observeEvent(input[[paste0('add_button_', table)]], priority = 20,{
       # If add transects button is clicked, then same dive forms data before opening transect form
-      if(table == 'transects')  closed_dive <<- dives_FormData()
+      if(table == 'transects')  current_dive <<- dives_FormData()
+      if(table == 'dives')  current_dive <<- data.frame()
       # Open form
       get(paste0(table,'_entryform'))(paste0('submit_', table))
     })
@@ -612,6 +629,29 @@ server <- function(input, output, session) {
       shinyjs::removeClass(id = 'check_dives', class='btn-success')
     }
   })
+  
+  
+  # Add transect text to dive form after transect is submitted
+  output$Text_transect <- renderText({
+    # Reacts to
+    req(input$submit_transects) 
+    input$add_button_dives
+    input$edit_button_dives
+    # If closed dive table is not empty
+    if ( nrow(current_dive) == 0 ){
+      out <- ''
+    } else {
+      # Current dive name
+      divename <- current_dive[1, 'name']
+      # Read table from db pool
+      SQL_df <- dbReadTable(pool, 'transects')
+      # Get transects
+      trans <- SQL_df[SQL_df$dive_name == divename, 'name']
+      out <- paste('Transects:', paste(trans, collapse = ', '))
+    } 
+    out
+  })
+  
 
 # Edit data
 # !!! Odd behaviour when you start app and open form, start and end times will appear empty
@@ -642,6 +682,8 @@ server <- function(input, output, session) {
       updateTextInput(session,'dive_objective', value = SQL_df[input$responses_dives_rows_selected, 'objective'])
       updateTextInput(session,'dive_summary', value = SQL_df[input$responses_dives_rows_selected, 'summary'])
       updateTextInput(session, 'dive_note', value = SQL_df[input$responses_dives_rows_selected, 'note'])
+      # current dive
+      current_dive <<- SQL_df[input$responses_dives_rows_selected,]
     }
   })
 
@@ -677,17 +719,17 @@ observeEvent(input$submit_transects, {
   # Open form
   dives_entryform('submit_dives')
   # Update
-  updateTextInput(session, 'dive_cruisename', value = closed_dive[1, 'cruise_name'])
-  updateTextInput(session,'dive_cruiseleg', value = closed_dive[1, 'leg'])
-  updateTextInput(session,'dive_name', value = closed_dive[1, 'name'])
-  updateTextInput(session,'dive_sitename',  value = closed_dive[1, 'site_name'])
-  updateSelectInput(session,'dive_diveconfig',  selected = closed_dive[1, 'dive_config'])
-  updateSelectInput(session,'dive_pilot',  selected = closed_dive[1, 'pilot'])
-  updateTextInput(session,'dive_starttime', value = closed_dive[1, 'start_time'])
-  updateTextInput(session,'dive_endtime', value = closed_dive[1, 'end_time'])
-  updateTextInput(session,'dive_objective', value = closed_dive[1, 'objective'])
-  updateTextInput(session,'dive_summary', value = closed_dive[1, 'summary'])
-  updateTextInput(session, 'dive_note', value = closed_dive[1, 'note'])
+  updateTextInput(session, 'dive_cruisename', value = current_dive[1, 'cruise_name'])
+  updateTextInput(session,'dive_cruiseleg', value = current_dive[1, 'leg'])
+  updateTextInput(session,'dive_name', value = current_dive[1, 'name'])
+  updateTextInput(session,'dive_sitename',  value = current_dive[1, 'site_name'])
+  updateSelectInput(session,'dive_diveconfig',  selected = current_dive[1, 'dive_config'])
+  updateSelectInput(session,'dive_pilot',  selected = current_dive[1, 'pilot'])
+  updateTextInput(session,'dive_starttime', value = current_dive[1, 'start_time'])
+  updateTextInput(session,'dive_endtime', value = current_dive[1, 'end_time'])
+  updateTextInput(session,'dive_objective', value = current_dive[1, 'objective'])
+  updateTextInput(session,'dive_summary', value = current_dive[1, 'summary'])
+  updateTextInput(session, 'dive_note', value = current_dive[1, 'note'])
 
 })
 
