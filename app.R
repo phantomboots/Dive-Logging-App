@@ -187,12 +187,36 @@ body <- body <- dashboardBody(
                        dataTableOutput('responses_equipment', width = '100%')
               )
             )
-    ),
-    tabItem(tabName = 'econfigtab',
-            h2('Set instrument and platform configurations')
-    ),
-    tabItem(tabName = 'dconfigtab',
-            h2('Set dive configuration')
+    ), tabItem(tabName = 'econfigtab',
+               h2('Instrument and platform configurations'),
+               fluidPage(
+                 shinyjs::useShinyjs(),
+                 shinyjs::inlineCSS(appCSS),
+                 fluidRow(
+                   actionButton('add_button_equipconfig', 'Add', icon('plus')),
+                   actionButton('edit_button_equipconfig', 'Edit', icon('edit')),
+                   actionButton('delete_button_equipconfig', 'Delete', icon('trash-alt'))
+                 ),
+                 br(),
+                 fluidRow(width='100%',
+                          dataTableOutput('responses_equipconfig', width = '100%')
+                 )
+               )
+    ), tabItem(tabName = 'dconfigtab',
+               h2('Dive configurations'),
+               fluidPage(
+                 shinyjs::useShinyjs(),
+                 shinyjs::inlineCSS(appCSS),
+                 fluidRow(
+                   actionButton('add_button_diveconfig', 'Add', icon('plus')),
+                   actionButton('edit_button_diveconfig', 'Edit', icon('edit')),
+                   actionButton('delete_button_diveconfig', 'Delete', icon('trash-alt'))
+                 ),
+                 br(),
+                 fluidRow(width='100%',
+                          dataTableOutput('responses_diveconfig', width = '100%')
+                 )
+               )
     )
   )
 )
@@ -259,6 +283,8 @@ server <- function(input, output, session) {
   cruise_df <- makeReactive('cruise')
   equipment_df <- makeReactive('equipment')
   people_df <- makeReactive('people')
+  equipconfig_df <- makeReactive('equipconfig')
+  diveconfig_df <- makeReactive('diveconfig')
   
   
   # Display dives table
@@ -301,6 +327,22 @@ server <- function(input, output, session) {
     )
   })
   
+  # Display equip config table
+  output$responses_equipconfig <- DT::renderDataTable({
+    table <- equipconfig_df() %>% select(-row_id)
+    table <- datatable(table, rownames = FALSE, selection = 'single',
+                       options = list(searching = FALSE, lengthChange = FALSE)
+    )
+  })
+  
+  # Display dive config table
+  output$responses_diveconfig <- DT::renderDataTable({
+    table <- diveconfig_df() %>% select(-row_id)
+    table <- datatable(table, rownames = FALSE, selection = 'single',
+                       options = list(searching = FALSE, lengthChange = FALSE)
+    )
+  })
+  
   
   ##############################
   #        Form data           #
@@ -310,75 +352,100 @@ server <- function(input, output, session) {
   
   # Dives
   dives_FormData <- reactive({
-    divesFormData <- data.frame(row_id = UUIDgenerate(),
-                                cruise_name = input$dive_cruisename,
-                                leg = input$dive_cruiseleg,
-                                name = input$dive_name, 
-                                pilot = input$dive_pilot,
-                                start_time = input$dive_starttime,
-                                end_time = input$dive_endtime,
-                                site_name = input$dive_sitename,
-                                dive_config = input$dive_diveconfig,
-                                objective = input$dive_objective,
-                                summary = input$dive_summary,
-                                note = input$dive_note,
-                                stringsAsFactors = FALSE)
-    return(divesFormData)
+    dftable <- data.frame(row_id = UUIDgenerate(),
+                          cruise_name = input$dive_cruisename,
+                          leg = input$dive_cruiseleg,
+                          name = input$dive_name, 
+                          pilot = input$dive_pilot,
+                          start_time = input$dive_starttime,
+                          end_time = input$dive_endtime,
+                          site_name = input$dive_sitename,
+                          dive_config = input$dive_diveconfig,
+                          objective = input$dive_objective,
+                          summary = input$dive_summary,
+                          note = input$dive_note,
+                          stringsAsFactors = FALSE)
+    return(dftable)
   })
   
   # Transects
   transects_FormData <- reactive({
-    transectsFormData <- data.frame(row_id = UUIDgenerate(),
-                                    cruise_name = input$transect_cruisename,
-                                    leg = input$transect_cruiseleg,
-                                    dive_name = input$transect_divename, 
-                                    name = input$transect_name, 
-                                    start_time = input$transect_starttime,
-                                    end_time = input$transect_endtime,
-                                    objective = input$transect_objective,
-                                    summary = input$transect_summary,
-                                    note = input$transect_note,
-                                    stringsAsFactors = FALSE)
-    return(transectsFormData)
+    dftable <- data.frame(row_id = UUIDgenerate(),
+                          cruise_name = input$transect_cruisename,
+                          leg = input$transect_cruiseleg,
+                          dive_name = input$transect_divename, 
+                          name = input$transect_name, 
+                          start_time = input$transect_starttime,
+                          end_time = input$transect_endtime,
+                          objective = input$transect_objective,
+                          summary = input$transect_summary,
+                          note = input$transect_note,
+                          stringsAsFactors = FALSE)
+    return(dftable)
   })
   
   
   # Cruise
   cruise_FormData <- reactive({
-    cruiseFormData <- data.frame(row_id = UUIDgenerate(),
-                                 name = input$cruise_name,
-                                 leg = input$cruise_leg,
-                                 objective = input$cruise_objective,
-                                 summary = input$cruise_summary,
-                                 note = input$cruise_note,
-                                 stringsAsFactors = FALSE)
-    return(cruiseFormData)
+    dftable <- data.frame(row_id = UUIDgenerate(),
+                          name = input$cruise_name,
+                          leg = input$cruise_leg,
+                          objective = input$cruise_objective,
+                          summary = input$cruise_summary,
+                          note = input$cruise_note,
+                          stringsAsFactors = FALSE)
+    return(dftable)
   })
   
   # equipment
   equipment_FormData <- reactive({
-    equipmentFormData <- data.frame(row_id = UUIDgenerate(),
-                                    short_code = input$equip_shortcode,
-                                    brand = input$equip_brand,
-                                    model = input$equip_model,
-                                    serial_number = input$equip_serialnumber,
-                                    type = input$equip_type,
-                                    note = input$equip_note,
-                                    stringsAsFactors = FALSE)
-    return(equipmentFormData)
+    dftable <- data.frame(row_id = UUIDgenerate(),
+                          short_code = input$equip_shortcode,
+                          brand = input$equip_brand,
+                          model = input$equip_model,
+                          serial_number = input$equip_serialnumber,
+                          type = input$equip_type,
+                          note = input$equip_note,
+                          stringsAsFactors = FALSE)
+    return(dftable)
   })
   
   # people
   people_FormData <- reactive({
-    peopleFormData <- data.frame(row_id = UUIDgenerate(),
-                                 initials = input$initials,
-                                 first_name = input$first_name,
-                                 last_name = input$last_name,
-                                 email = input$email,
-                                 stringsAsFactors = FALSE)
-    return(peopleFormData)
+    dftable <- data.frame(row_id = UUIDgenerate(),
+                          initials = input$initials,
+                          first_name = input$first_name,
+                          last_name = input$last_name,
+                          email = input$email,
+                          stringsAsFactors = FALSE)
+    return(dftable)
   })
   
+  # equip config
+  equipconfig_FormData <- reactive({
+    dftable <- data.frame(row_id = UUIDgenerate(),
+                          name = input$equipconfig_name,
+                          short_code = input$equipconfig_shortcode,
+                          type = input$equipconfig_type,
+                          configuration = input$equipconfig_configuration,
+                          note = input$equipconfig_note,
+                          stringsAsFactors = FALSE)
+    return(dftable)
+  })
+
+    # dive config
+  diveconfig_FormData <- reactive({
+    dftable <- data.frame(row_id = UUIDgenerate(),
+                          name = input$diveconfig_name,
+                          ship_config = input$ship_config,
+                          sub_config = input$sub_config,
+                          ship_instrument_configs = input$ship_instrument_configs,
+                          sub_instrument_configs = input$sub_instrument_configs,
+                          note = input$diveconfig_note,
+                          stringsAsFactors = FALSE)
+    return(dftable)
+  })
+ 
 
   ##############################
   #        Input forms         #
@@ -573,7 +640,7 @@ server <- function(input, output, session) {
     )
   }
   
-  # Form for equipment data entry
+  # Form for personnel data entry
   people_entryform <- function(button_id){
     showModal(
       modalDialog(
@@ -595,6 +662,58 @@ server <- function(input, output, session) {
       )
     )
   }
+  
+  # Form for equipment configuration data entry
+  equipconfig_entryform <- function(button_id){
+    showModal(
+      modalDialog(
+        h2('Equipment configuration'),
+        div(id=('equipconfig_entryform'),
+            tags$head(tags$style('.modal-dialog{ width:400px}')),
+            tags$head(tags$style(HTML('.shiny-split-layout > div {overflow: visible}'))),
+            fluidPage(
+              fluidRow(
+                selectInput('equipconfig_shortcode', 'Short code', equipment_df()$short_code),
+                selectInput('equipconfig_type', 'Type', c('platform','instrument')),
+                textInput('equipconfig_name', 'Name', ''),
+                textInput('equipconfig_configuration', 'Configuration', ''),
+                textInput('equipconfig_note', 'Note', ''),
+                actionButton(button_id, 'Submit', class = 'btn-warning')
+              ),
+              easyClose = FALSE
+            )
+        )
+      )
+    )
+  }
+  
+  # !!! need to add multiselect option for instrument configs
+  # Form for equipment configuration data entry
+  diveconfig_entryform <- function(button_id){
+    showModal(
+      modalDialog(
+        h2('Dive configuration'),
+        div(id=('diveconfig_entryform'),
+            tags$head(tags$style('.modal-dialog{ width:400px}')),
+            tags$head(tags$style(HTML('.shiny-split-layout > div {overflow: visible}'))),
+            fluidPage(
+              fluidRow(
+                textInput('diveconfig_name', 'Name', ''),
+                selectInput('ship_config', 'Ship config', equipconfig_df()$name),
+                selectInput('sub_config', 'Sub config', equipconfig_df()$name),
+                selectInput('ship_instrument_configs', 'Ship instruments config', equipconfig_df()$name),
+                selectInput('sub_instrument_configs', 'Sub instruments config', equipconfig_df()$name),
+                textInput('diveconfig_note', 'Note', ''),
+                actionButton(button_id, 'Submit', class = 'btn-warning')
+              ),
+              easyClose = FALSE
+            )
+        )
+      )
+    )
+  }
+  
+  
   
   
   ##################################
@@ -727,6 +846,8 @@ server <- function(input, output, session) {
   obsEvents(table='cruise')
   obsEvents(table='equipment')
   obsEvents(table='people')
+  obsEvents(table='equipconfig')
+  obsEvents(table='diveconfig')
   
 
   
@@ -1036,6 +1157,96 @@ observeEvent(input$submit_edit_people, priority = 20, {
   
 })
 
+
+###################################
+#        Equipconfig Edit         #
+###################################
+
+# Edit data
+# Update form values in the selected row.
+observeEvent(input$edit_button_equipconfig, priority = 20,{
+  # Fetch db data
+  SQL_df <- dbReadTable(pool, 'equipconfig')
+  # Warnings for selection
+  showModal(
+    if(length(input$responses_equipconfig_rows_selected) < 1){
+      modalDialog(
+        paste('Please select a row' ),easyClose = TRUE)
+    })     # If one row is selected open form and update
+  if(length(input$responses_equipconfig_rows_selected) == 1 ){
+    # Form
+    equipconfig_entryform('submit_edit_equipconfig')
+    # Update
+    updateSelectInput(session, 'equipconfig_shortcode', selected = SQL_df[input$responses_equipconfig_rows_selected, 'short_code'])
+    updateSelectInput(session, 'equipconfig_type', selected = SQL_df[input$responses_equipconfig_rows_selected, 'type'])
+    updateTextInput(session,'equipconfig_name', value = SQL_df[input$responses_equipconfig_rows_selected, 'name'])
+    updateTextInput(session,'equipconfig_configuration', value = SQL_df[input$responses_equipconfig_rows_selected, 'configuration'])
+    updateTextInput(session,'equipconfig_note', value = SQL_df[input$responses_equipconfig_rows_selected, 'note'])
+  }
+})
+
+# Updates the selected row with the values that were entered in the form, based on the row last clicked.
+observeEvent(input$submit_edit_equipconfig, priority = 20, {
+  # Get db data
+  SQL_df <- dbReadTable(pool, 'equipconfig')
+  row_id <- SQL_df[input$responses_equipconfig_row_last_clicked, 'row_id']
+  dbExecute(pool, sprintf('UPDATE "equipconfig" SET "name" = ?, "short_code" = ?, "type" = ?, "configuration" = ?, "note" = ?
+                          WHERE "row_id" = ("%s")', row_id),
+            param = list(input$equipconfig_name,
+                         input$equipconfig_shortcode,
+                         input$equipconfig_type,
+                         input$equipconfig_configuration,
+                         input$equipconfig_note))
+  removeModal()
+  
+})
+
+
+###################################
+#        Diveconfig Edit         #
+###################################
+
+# Edit data
+# Update form values in the selected row.
+observeEvent(input$edit_button_diveconfig, priority = 20,{
+  # Fetch db data
+  SQL_df <- dbReadTable(pool, 'diveconfig')
+  # Warnings for selection
+  showModal(
+    if(length(input$responses_diveconfig_rows_selected) < 1){
+      modalDialog(
+        paste('Please select a row' ),easyClose = TRUE)
+    })     # If one row is selected open form and update
+  if(length(input$responses_diveconfig_rows_selected) == 1 ){
+    # Form
+    diveconfig_entryform('submit_edit_diveconfig')
+    # Update
+    updateTextInput(session,'diveconfig_name', value = SQL_df[input$responses_diveconfig_rows_selected, 'name'])
+    updateSelectInput(session, 'ship_config', selected = SQL_df[input$responses_diveconfig_rows_selected, 'ship_config'])
+    updateSelectInput(session, 'sub_config', selected = SQL_df[input$responses_diveconfig_rows_selected, 'sub_config'])
+    updateSelectInput(session,'ship_instrument_configs', selected = SQL_df[input$responses_diveconfig_rows_selected, 'ship_instrument_configs'])
+    updateSelectInput(session,'sub_instrument_configs', selected = SQL_df[input$responses_diveconfig_rows_selected, 'sub_instrument_configs'])
+    updateTextInput(session,'diveconfig_note', value = SQL_df[input$responses_diveconfig_rows_selected, 'note'])
+  }
+})
+
+# Updates the selected row with the values that were entered in the form, based on the row last clicked.
+observeEvent(input$submit_edit_diveconfig, priority = 20, {
+  # Get db data
+  SQL_df <- dbReadTable(pool, 'diveconfig')
+  row_id <- SQL_df[input$responses_diveconfig_row_last_clicked, 'row_id']
+  dbExecute(pool, sprintf('UPDATE "diveconfig" SET "name" = ?, "ship_config" = ?, "sub_config" = ?, 
+                          "ship_instrument_configs" = ?, "sub_instrument_configs" = ?, "note" = ?
+                          WHERE "row_id" = ("%s")', row_id),
+            param = list(input$diveconfig_name,
+                         input$ship_config,
+                         input$sub_config,
+                         input$ship_instrument_configs,
+                         input$sub_instrument_configs,
+                         input$diveconfig_note))
+  removeModal()
+  
+})
 
 
 } # End server
