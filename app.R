@@ -19,26 +19,6 @@
 ###############################################################################
 
 
-## To do
-# - 1) change equip configuration input to variable:value pairs
-#   try adding a list of possible variables to set up:
-#   c('pan','tilt','yaw','offset_aft', 'offset_fwd', offset_strd', 'offset_port', 'zoom', 'aperture', 'x','y')
-#   maybe this could work as a select box with an adjacent text box and an input button
-#   when the button is clicked it would have to save the input to a {} string and 
-#   then reset the select box and text for another input. The input could be sent to a renderText{} uiOutput
-#   which could be edited if needed and that would be used as the configuration input$field
-# - 2) Maybe change 'leg' to numeric with a numeric input 
-# - 3) Move issues in annotations to gitlab issues 
-# - 4) Write readme
-
-
-# Issues: 
-# - Probably shouldn't be allowed to delete records that others depend on (pilots, dive configs, equip configs)
-
-# Notes:
-# - when you delete a dive it does not delete any of its transects
-
-
 # Packages
 library(shiny)
 library(DT)
@@ -64,9 +44,13 @@ alltabs <- lapply(setNames(nm = dbListTables(db)), dbReadTable, conn = db)
 #list2env(alltabs, envir=environment())
 dbDisconnect(db)
 
-
 # Clone the existing db
 pool <- dbPool(db)
+
+
+# Equipment config variables (edit as needed)
+config_variables <- c('pan','tilt','yaw','offset_aft', 'offset_fwd', 'offset_strd', 
+                      'offset_port', 'zoom', 'aperture', 'x','y')
 
 
 
@@ -436,7 +420,8 @@ server <- function(input, output, session) {
                           name = input$equipconfig_name,
                           short_code = input$equipconfig_shortcode,
                           type = input$equipconfig_type,
-                          configuration = input$equipconfig_configuration,
+                          #configuration = paste0('{', paste0(config_list(), collapse = ', '), '}'),
+                          configuration = input$equipconfig_string,
                           note = input$equipconfig_note,
                           stringsAsFactors = FALSE)
     return(dftable)
@@ -675,7 +660,7 @@ server <- function(input, output, session) {
   }
   
   # Form for equipment configuration data entry
-  equipconfig_entryform <- function(button_id){
+  equipconfig_entryform <- function(button_id, dismiss_id='dismiss_equipconfig'){
     showModal(
       modalDialog(
         h2('Equipment configuration'),
@@ -685,18 +670,26 @@ server <- function(input, output, session) {
             fluidPage(
               fluidRow(
                 selectInput('equipconfig_shortcode', labelMandatory('Short code'), equipment_df()$short_code),
-                selectInput('equipconfig_type', labelMandatory('Type'), c('platform','instrument')),
+                selectInput('equipconfig_type', labelMandatory('Type'), c('instrument','platform')),
                 textInput('equipconfig_name', labelMandatory('Name'), ''),
-                textInput('equipconfig_configuration', 'Configuration', ''),
+                splitLayout(
+                  cellWidths = c('150px', '80px', '80px'),
+                  cellArgs = list(style = 'vertical-align: top'),
+                  selectInput('equipconfig_variable', 'Variable', choices=config_variables, selected=NULL),
+                  numericInput('equipconfig_value', 'Value', value=NA),
+                  actionButton('equipconfig_add', 'Add', icon('plus'))
+                ),
+                uiOutput('out_equipconfig_string'),
+                tags$style(type='text/css', '#equipconfig_add { width:100%; margin-top: 25px}'),
                 textInput('equipconfig_note', 'Note', ''),
                 helpText(labelMandatory(''), paste('Mandatory field')),
                 actionButton(button_id, 'Submit', class = 'btn-warning')
-              )
-            )
-        )
+              ))),
+        footer = actionButton(dismiss_id,'Dismiss')
       )
     )
   }
+  
   
   # Form for dive configuration data entry
   diveconfig_entryform <- function(button_id){
@@ -774,6 +767,32 @@ server <- function(input, output, session) {
   
   
   
+  ##################################
+  #        Add config button       #
+  ##################################
+  
+  # Make reactive values
+  config_pair <- reactiveVal('')
+  config_list <- reactiveVal(NULL)
+  
+  # Event observers add config button
+  observeEvent(input$equipconfig_add,{
+    # Create string pair
+    str_pr <- paste0(input$equipconfig_variable, ':', as.character(input$equipconfig_value))
+    # Set config_pair value to str_pr
+    config_pair(str_pr)
+    # Add config_pair to config_list
+    config_list(c(config_list(), config_pair()) )
+  })
+  
+  # Generate the text for the config string
+  output$out_equipconfig_string <- renderUI({
+    string <- paste0('{', paste0(config_list(), collapse = ', '), '}')
+    textInput('equipconfig_string', 'Configuration', string)
+  })
+
+  
+  
   ##############################
   #       Observe Events       #
   ##############################
@@ -846,11 +865,12 @@ server <- function(input, output, session) {
         datetimes$transect_start <- ''
         datetimes$transect_end <- ''
       }
+      if( table == 'equipconfig') config_list(NULL)
       removeModal()
       shinyjs::reset(paste0(table,'_entryform'))
     })
     
-    # Observe event for closing modal
+    # Observe event for dismissing dives, transect and equipconfig modals
     observeEvent(input[[paste0('dismiss_',table)]], priority = 20,{
       # Reset 
       if( table == 'dives'){
@@ -861,21 +881,7 @@ server <- function(input, output, session) {
         datetimes$transect_start <- ''
         datetimes$transect_end <- ''
       }
-      removeModal()
-      shinyjs::reset(paste0(table,'_entryform'))
-    })
-    
-    # Observe event for closing edit modal
-    observeEvent(input[[paste0('dismiss_edit_',table)]], priority = 20,{
-      # Reset 
-      if( table == 'dives'){
-        datetimes$dive_start <- ''
-        datetimes$dive_end <- ''
-      }
-      if( table == 'transects'){
-        datetimes$transect_start <- ''
-        datetimes$transect_end <- ''
-      }
+      if( table == 'equipconfig') config_list(NULL)
       removeModal()
       shinyjs::reset(paste0(table,'_entryform'))
     })
@@ -932,6 +938,7 @@ server <- function(input, output, session) {
     out
   })
   
+  
 
 # Edit data
 # Update form values in the selected row.
@@ -947,7 +954,7 @@ server <- function(input, output, session) {
     # If one row is selected open form and update
     if(length(input$responses_dives_rows_selected) == 1 ){
       # Form
-      dives_entryform('submit_edit_dives', 'dismiss_edit_dives')
+      dives_entryform('submit_edit_dives')
       # Disable add transect during dive edit
       shinyjs::disable(id = 'add_button_transects')
       # Add datetimes to reactive values to force renderUI to run
@@ -1080,6 +1087,17 @@ observeEvent(input$submit_edit_transects, priority = 20, {
   removeModal()
   
 })
+
+# Special observe event for closing edit transect modal
+# The dismiss_edit_transects input doesn't trigger a reopen of the dive table
+observeEvent(input[['dismiss_edit_transects']], priority = 20,{
+  # Reset 
+  datetimes$transect_start <- ''
+  datetimes$transect_end <- ''
+  removeModal()
+  shinyjs::reset(paste0(table,'_entryform'))
+})
+
 
 
 ###################################
@@ -1233,11 +1251,18 @@ observeEvent(input$edit_button_equipconfig, priority = 20,{
   if(length(input$responses_equipconfig_rows_selected) == 1 ){
     # Form
     equipconfig_entryform('submit_edit_equipconfig')
+    # Get configure string, remove{}, split and assign to react value
+    cs <-  SQL_df[input$responses_equipconfig_rows_selected, 'configuration']
+    cs_vector <- strsplit(gsub('[{]|,|[}]', '', cs),  ' ')[[1]]
+    # Update reactive value
+    config_list(cs_vector)
     # Update
     updateSelectInput(session, 'equipconfig_shortcode', selected = SQL_df[input$responses_equipconfig_rows_selected, 'short_code'])
     updateSelectInput(session, 'equipconfig_type', selected = SQL_df[input$responses_equipconfig_rows_selected, 'type'])
     updateTextInput(session,'equipconfig_name', value = SQL_df[input$responses_equipconfig_rows_selected, 'name'])
-    updateTextInput(session,'equipconfig_configuration', value = SQL_df[input$responses_equipconfig_rows_selected, 'configuration'])
+    updateSelectInput(session,'equipconfig_variable', choices=config_variables, selected=NULL)
+    updateNumericInput(session,'equipconfig_value', value=NULL)
+    updateTextInput(session,'equipconfig_string', value = paste0('{', paste0(config_list(), collapse = ', '), '}'))
     updateTextInput(session,'equipconfig_note', value = SQL_df[input$responses_equipconfig_rows_selected, 'note'])
   }
 })
@@ -1252,7 +1277,8 @@ observeEvent(input$submit_edit_equipconfig, priority = 20, {
             param = list(input$equipconfig_name,
                          input$equipconfig_shortcode,
                          input$equipconfig_type,
-                         input$equipconfig_configuration,
+                         input$equipconfig_string,
+                         #paste0('{', paste0(config_list(), collapse = ', '), '}'),
                          input$equipconfig_note))
   removeModal()
   
