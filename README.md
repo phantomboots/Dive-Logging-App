@@ -1,4 +1,4 @@
-# Dungeness Crab Integrated SDM
+# NDST Dive Logging App
 
 __Main author:__  Jessica Nephin     
 __Contact:__      e-mail: jessica.nephin@dfo-mpo.gc.ca
