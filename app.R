@@ -20,8 +20,15 @@
 
 
 ## To do
-# - Add configuration tool
-# - Move issues in annotations to gitlab issues 
+# - 1) change equip configuration input to variable:value pairs
+#   try adding a list of possible variables to set up:
+#   c('pan','tilt','yaw','offset_aft', 'offset_fwd', offset_strd', 'offset_port', 'zoom', 'aperture', 'x','y')
+#   maybe this could work as a select box with an adjacent text box and an input button
+#   when the button is clicked it would have to save the input to a {} string and 
+#   then reset the select box and text for another input. The input could be sent to a renderText{} uiOutput
+#   which could be edited if needed and that would be used as the configuration input$field
+# - 2) Maybe change 'leg' to numeric with a numeric input 
+# - 3) Move issues in annotations to gitlab issues 
 
 
 # Notes:
@@ -439,8 +446,8 @@ server <- function(input, output, session) {
                           name = input$diveconfig_name,
                           ship_config = input$ship_config,
                           sub_config = input$sub_config,
-                          ship_instrument_configs = input$ship_instrument_configs,
-                          sub_instrument_configs = input$sub_instrument_configs,
+                          ship_instrument_configs = paste0(input$ship_instrument_configs,collapse=';'),
+                          sub_instrument_configs = paste0(input$sub_instrument_configs,collapse=';'),
                           note = input$diveconfig_note,
                           stringsAsFactors = FALSE)
     return(dftable)
@@ -455,7 +462,7 @@ server <- function(input, output, session) {
   obsFieldsMandatory <- function(table, fields){
     # Define which input fields are mandatory 
     observe({
-      mandatoryFilled <- vapply(fields ,function(x) {!is.null(input[[x]]) && input[[x]] != ''}, logical(1))
+      mandatoryFilled <- vapply(fields ,function(x) {!is.null(input[[x]]) && input[[x]][1] != ''}, logical(1))
       mandatoryFilled <- all(mandatoryFilled)
       shinyjs::toggleState(id = paste0('submit_',table), condition = mandatoryFilled)
     })
@@ -467,9 +474,14 @@ server <- function(input, output, session) {
   obsFieldsMandatory(table='transects', fields=c('transect_cruisename', 'transect_cruiseleg', 'transect_divename', 
                                                  'transect_name','transect_starttime', 'transect_endtime'))
   obsFieldsMandatory(table='cruise', fields=c('cruise_name', 'cruise_leg', 'cruise_objective'))
-
+  obsFieldsMandatory(table='equipment', fields=c('equip_shortcode', 'equip_brand', 'equip_model','equip_serialnumber',
+                                                 'equip_type'))
+  obsFieldsMandatory(table='people', fields=c('initials', 'first_name', 'last_name','email'))
+  obsFieldsMandatory(table='equipconfig', fields=c('equipconfig_name', 'equipconfig_shortcode', 'equipconfig_type'))
+  obsFieldsMandatory(table='diveconfig', fields=c('diveconfig_name', 'ship_config', 'sub_config', 
+                                                  'ship_instrument_configs','sub_instrument_configs'))
   
-
+  
   # Form for dive data entry
   dives_entryform <- function(button_id){
     showModal(
@@ -496,7 +508,8 @@ server <- function(input, output, session) {
                 splitLayout(
                   cellWidths = c('200px', '200px'),
                   cellArgs = list(style = 'vertical-align: top'),
-                  selectInput('dive_diveconfig', labelMandatory('Dive config'), c('d1','d2','d3')),
+                  selectInput('dive_diveconfig', labelMandatory('Dive config'), 
+                              choices=diveconfig_df()$name, selected=diveconfig_df()$name[nrow(diveconfig_df())]),
                   selectInput('dive_pilot', labelMandatory('Pilot'), people_df()$initials),
                 ),
                 splitLayout(
@@ -605,7 +618,7 @@ server <- function(input, output, session) {
                 textInput('cruise_objective', labelMandatory('Objective'), ''),
                 textInput('cruise_summary', 'Summary', ''),
                 textInput('cruise_note', 'Note', ''),
-                helpText(labelMandatory(''), paste('Mandatory field.')),
+                helpText(labelMandatory(''), paste('Mandatory field')),
                 actionButton(button_id, 'Submit', class = 'btn-warning')
               ),
               easyClose = FALSE
@@ -625,12 +638,13 @@ server <- function(input, output, session) {
             tags$head(tags$style(HTML('.shiny-split-layout > div {overflow: visible}'))),
             fluidPage(
               fluidRow(
-                textInput('equip_shortcode', 'Short code', ''),
-                textInput('equip_brand', 'Brand',  ''),
-                textInput('equip_model', 'Model', ''),
-                textInput('equip_serialnumber', 'Serial number', ''),
-                textInput('equip_type', 'Type', ''),
+                textInput('equip_shortcode', labelMandatory('Short code'), ''),
+                textInput('equip_brand', labelMandatory('Brand'),  ''),
+                textInput('equip_model', labelMandatory('Model'), ''),
+                textInput('equip_serialnumber', labelMandatory('Serial number'), ''),
+                textInput('equip_type',labelMandatory('Type'), ''),
                 textInput('equip_note', 'Note', ''),
+                helpText(labelMandatory(''), paste('Mandatory field')),
                 actionButton(button_id, 'Submit', class = 'btn-warning')
               ),
               easyClose = FALSE
@@ -650,10 +664,11 @@ server <- function(input, output, session) {
             tags$head(tags$style(HTML('.shiny-split-layout > div {overflow: visible}'))),
             fluidPage(
               fluidRow(
-                textInput('initials', 'Initials', ''),
-                textInput('first_name', 'First name',  ''),
-                textInput('last_name', 'Last name', ''),
-                textInput('email', 'Email', ''),
+                textInput('initials', labelMandatory('Initials'), ''),
+                textInput('first_name', labelMandatory('First name'),  ''),
+                textInput('last_name', labelMandatory('Last name'), ''),
+                textInput('email', labelMandatory('Email'), ''),
+                helpText(labelMandatory(''), paste('Mandatory field')),
                 actionButton(button_id, 'Submit', class = 'btn-warning')
               ),
               easyClose = FALSE
@@ -673,11 +688,12 @@ server <- function(input, output, session) {
             tags$head(tags$style(HTML('.shiny-split-layout > div {overflow: visible}'))),
             fluidPage(
               fluidRow(
-                selectInput('equipconfig_shortcode', 'Short code', equipment_df()$short_code),
-                selectInput('equipconfig_type', 'Type', c('platform','instrument')),
-                textInput('equipconfig_name', 'Name', ''),
+                selectInput('equipconfig_shortcode', labelMandatory('Short code'), equipment_df()$short_code),
+                selectInput('equipconfig_type', labelMandatory('Type'), c('platform','instrument')),
+                textInput('equipconfig_name', labelMandatory('Name'), ''),
                 textInput('equipconfig_configuration', 'Configuration', ''),
                 textInput('equipconfig_note', 'Note', ''),
+                helpText(labelMandatory(''), paste('Mandatory field')),
                 actionButton(button_id, 'Submit', class = 'btn-warning')
               ),
               easyClose = FALSE
@@ -687,8 +703,7 @@ server <- function(input, output, session) {
     )
   }
   
-  # !!! need to add multiselect option for instrument configs
-  # Form for equipment configuration data entry
+  # Form for dive configuration data entry
   diveconfig_entryform <- function(button_id){
     showModal(
       modalDialog(
@@ -698,12 +713,13 @@ server <- function(input, output, session) {
             tags$head(tags$style(HTML('.shiny-split-layout > div {overflow: visible}'))),
             fluidPage(
               fluidRow(
-                textInput('diveconfig_name', 'Name', ''),
-                selectInput('ship_config', 'Ship config', equipconfig_df()$name),
-                selectInput('sub_config', 'Sub config', equipconfig_df()$name),
-                selectInput('ship_instrument_configs', 'Ship instruments config', equipconfig_df()$name),
-                selectInput('sub_instrument_configs', 'Sub instruments config', equipconfig_df()$name),
+                textInput('diveconfig_name', labelMandatory('Name'), ''),
+                selectizeInput('ship_config', labelMandatory('Ship'), choices=equipconfig_df()$name, multiple=T, options = list(maxItems = 1)),
+                selectizeInput('sub_config', labelMandatory('Sub'), choices=equipconfig_df()$name, multiple=T, options = list(maxItems = 1)),
+                selectInput('ship_instrument_configs', labelMandatory('Ship instruments'), choices=equipconfig_df()$name, multiple=T),
+                selectInput('sub_instrument_configs', labelMandatory('Sub instruments'), choices=equipconfig_df()$name, multiple=T),
                 textInput('diveconfig_note', 'Note', ''),
+                helpText(labelMandatory(''), paste('Mandatory field')),
                 actionButton(button_id, 'Submit', class = 'btn-warning')
               ),
               easyClose = FALSE
@@ -781,6 +797,8 @@ server <- function(input, output, session) {
       if(table == 'dives')  current_dive <<- data.frame()
       # Open form
       get(paste0(table,'_entryform'))(paste0('submit_', table))
+      # Disable submit, is enabled when mandatory field is entered
+      shinyjs::disable(id = paste0('submit_',table))
     })
     
     # Observe event for opening the delete modal
@@ -826,7 +844,6 @@ server <- function(input, output, session) {
       quary <- sqlAppendTable(pool, table, formdata(), row.names = FALSE)
       dbExecute(pool, quary)
       # Reset 
-      shinyjs::reset(paste0(table,'_entryform'))
       if( table == 'dives'){
         datetimes$dive_start <- ''
         datetimes$dive_end <- ''
@@ -836,6 +853,7 @@ server <- function(input, output, session) {
         datetimes$transect_end <- ''
       }
       removeModal()
+      shinyjs::reset(paste0(table,'_entryform'))
     })
   }
   
@@ -1220,12 +1238,17 @@ observeEvent(input$edit_button_diveconfig, priority = 20,{
   if(length(input$responses_diveconfig_rows_selected) == 1 ){
     # Form
     diveconfig_entryform('submit_edit_diveconfig')
+    # extract multiple values
+    ship_intrum <- SQL_df[input$responses_diveconfig_rows_selected, 'ship_instrument_configs']
+    ship_intrum_split <- strsplit(ship_intrum, ';')[[1]]
+    sub_intrum <- SQL_df[input$responses_diveconfig_rows_selected, 'sub_instrument_configs']
+    sub_intrum_split <- strsplit(sub_intrum, ';')[[1]]
     # Update
     updateTextInput(session,'diveconfig_name', value = SQL_df[input$responses_diveconfig_rows_selected, 'name'])
-    updateSelectInput(session, 'ship_config', selected = SQL_df[input$responses_diveconfig_rows_selected, 'ship_config'])
-    updateSelectInput(session, 'sub_config', selected = SQL_df[input$responses_diveconfig_rows_selected, 'sub_config'])
-    updateSelectInput(session,'ship_instrument_configs', selected = SQL_df[input$responses_diveconfig_rows_selected, 'ship_instrument_configs'])
-    updateSelectInput(session,'sub_instrument_configs', selected = SQL_df[input$responses_diveconfig_rows_selected, 'sub_instrument_configs'])
+    updateSelectizeInput(session, 'ship_config', selected = SQL_df[input$responses_diveconfig_rows_selected, 'ship_config'])
+    updateSelectizeInput(session, 'sub_config', selected = SQL_df[input$responses_diveconfig_rows_selected, 'sub_config'])
+    updateSelectInput(session,'ship_instrument_configs', selected = ship_intrum_split)
+    updateSelectInput(session,'sub_instrument_configs', selected = sub_intrum_split)
     updateTextInput(session,'diveconfig_note', value = SQL_df[input$responses_diveconfig_rows_selected, 'note'])
   }
 })
@@ -1241,8 +1264,8 @@ observeEvent(input$submit_edit_diveconfig, priority = 20, {
             param = list(input$diveconfig_name,
                          input$ship_config,
                          input$sub_config,
-                         input$ship_instrument_configs,
-                         input$sub_instrument_configs,
+                         paste0(input$ship_instrument_configs,collapse=';'),
+                         paste0(input$sub_instrument_configs,collapse=';'),
                          input$diveconfig_note))
   removeModal()
   
