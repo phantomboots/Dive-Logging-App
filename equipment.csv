@@ -1,0 +1,7 @@
+short_code,brand,model,serial_number,type,note
+vector,Coast Guard Researcch Vessel,Vector,CGBW,Ship,
+gopro,GoPro,Hero4,4830543,Camera,
+phantom,Deep Ocean Engineering,Phantom,428,ROV,
+dvl,ROWETech,Doppler Velocity Log,123456,DVL,
+gps,Hemisphere,GPS,12345,GPS,
+compass,Generic,Compass,12345,Compass,

@@ -1,7 +1,7 @@
 # NDST Dive Logging App
 
 __Main author:__  Jessica Nephin     
-__Contact:__      e-mail: jessica.nephin@dfo-mpo.gc.ca
+__Contact:__      jessica.nephin@dfo-mpo.gc.ca
 
 - [Objective](#objective)
 - [Summary](#summary)
@@ -29,7 +29,7 @@ The R shiny app. The app allows users to add, edit and delete records in cruise,
 
 
 ## Requirements
-R version 4.1.2    
-shiny 1.7.4
+R version 4.2.1    
+shiny 1.7.4    
 sqlite3    
 
