@@ -29,6 +29,7 @@ library(uuid)
 library(dplyr)
 library(shinydashboard)
 library(purrr)
+library(ggplot2)
 
 
 ##############################
@@ -41,7 +42,7 @@ dbname <- 'divelogging-db.sqlite'
 db <- dbConnect(RSQLite::SQLite(), dbname)
 # Load all tables from db into workspace
 alltabs <- lapply(setNames(nm = dbListTables(db)), dbReadTable, conn = db)
-#list2env(alltabs, envir=environment())
+# Close db connection
 dbDisconnect(db)
 
 # Clone the existing db
@@ -81,7 +82,7 @@ appCSS <- list('.unique_star'='color: red',
 header <- dashboardHeader(title = 'NDST Dive Logging App',
                           tags$li(class = 'dropdown', 
                                   style='position:fixed;right:10px;top:10px;',
-                                  actionButton("export", "Export", 
+                                  actionButton('export', 'Export', 
                                                icon('file-export'))
                           )
 )
@@ -90,17 +91,29 @@ header <- dashboardHeader(title = 'NDST Dive Logging App',
 sidebar <- dashboardSidebar( 
   sidebarMenu(
     menuItem('Cruise', tabName = 'cruisetab', icon = icon('ship')),
-    menuItem('Personnel', tabName = 'peopletab', icon = icon('user-group')),
+    menuItem('Personnel', tabName = 'peopletab', icon = icon('user')),
     menuItem('Equipment list', tabName = 'equiptab', icon = icon('list-ul')),
-    menuItem('Equipment configurations', tabName = 'econfigtab', icon = icon('screwdriver-wrench')),
+    menuItem('Equipment configurations', tabName = 'econfigtab', icon = icon('screwdriver')),
     menuItem('Dive configurations', tabName = 'dconfigtab', icon = icon('sliders')),
-    menuItem('Dives', tabName = 'divetab', icon = icon('water')),
-    menuItem('Transects', tabName = 'trantab', icon = icon('arrow-right'))
+    menuItem('Dives', tabName = 'divetab', icon = icon('arrow-down-up-across-line')),
+    menuItem('Transects', tabName = 'trantab', icon = icon('route')),
+    menuItem('Checks', tabName = 'plotstab', icon = icon('chart-column'))
     
   )
 )
 # Body
 body <- body <- dashboardBody(
+  tags$style(HTML("
+.box.box-solid.box-primary>.box-header {
+  color:#fff;
+  background:#364950
+  }
+.box.box-solid.box-primary{
+border-bottom-color:#364950;
+border-left-color:#364950;
+border-right-color:#364950;
+border-top-color:#364950;
+}")),
   tabItems(
     tabItem(tabName = 'divetab',
             h2('Dives'),
@@ -210,13 +223,35 @@ body <- body <- dashboardBody(
                           dataTableOutput('responses_diveconfig', width = '100%')
                  )
                )
+    ), tabItem(tabName = 'plotstab',
+               h2('Checks'),
+               fluidPage(
+                 fluidRow(
+                   infoBoxOutput('totalDives', width=3),
+                   infoBoxOutput('totalTransects', width=3),
+                   infoBoxOutput('totalEquipconfigs', width=3),
+                   infoBoxOutput('totalDiveconfigs', width=3)
+                 ),
+                 fluidRow(
+                   box(title = 'Duration of dives', plotOutput('plot1', height = 300),
+                       status='primary', solidHeader=TRUE),
+                   box(title = 'Duration of transects', plotOutput('plot2', height = 300),
+                       status='primary', solidHeader=TRUE),
+                 ),
+                 fluidRow(
+                   box(title = 'Hours piloting', plotOutput('plot3', height = 250), 
+                       status='primary', solidHeader=TRUE),
+                   box(title=span('Warnings', icon('triangle-exclamation')), status='warning', 
+                       solidHeader=TRUE, htmlOutput('textwarnings')),
+                 )
+               )
     )
   )
 )
 
 
 # Dashboard ui
-ui <-  dashboardPage(header, sidebar, body)
+ui <-  dashboardPage(header, sidebar, body, skin = 'blue')
 
 
 
@@ -420,7 +455,6 @@ server <- function(input, output, session) {
                           name = input$equipconfig_name,
                           short_code = input$equipconfig_shortcode,
                           type = input$equipconfig_type,
-                          #configuration = paste0('{', paste0(config_list(), collapse = ', '), '}'),
                           configuration = input$equipconfig_string,
                           note = input$equipconfig_note,
                           stringsAsFactors = FALSE)
@@ -503,7 +537,7 @@ server <- function(input, output, session) {
                   cellWidths = c('300px', '100px'),
                   cellArgs = list(style = 'vertical-align: top'),
                   uiOutput('out_dive_starttime'),
-                  actionButton('set_dive_starttime', 'Start', icon = icon("clock"), class = "btn-primary"),
+                  actionButton('set_dive_starttime', 'Start', icon = icon('clock'), class = 'btn-primary'),
                 ),
                 splitLayout(
                   cellWidths = c('150px', '250px'),
@@ -511,12 +545,12 @@ server <- function(input, output, session) {
                   actionButton('add_button_transects', 'Add Transect', icon('plus'), class = 'btn-warning'),
                   textOutput('Text_transect')
                 ),
-                br(), #br(),
+                br(), 
                 splitLayout(
                   cellWidths = c('300px', '100px'),
                   cellArgs = list(style = 'vertical-align: top'),
                   uiOutput('out_dive_endtime'),
-                  actionButton('set_dive_endtime', 'End', icon = icon("clock"), class = "btn-primary"),
+                  actionButton('set_dive_endtime', 'End', icon = icon('clock'), class = 'btn-primary'),
                 ),
                 tags$style(type='text/css', '#set_dive_starttime { width:100%; margin-top: 25px}'),
                 tags$style(type='text/css', '#set_dive_endtime { width:100%; margin-top: 25px}'),
@@ -562,13 +596,13 @@ server <- function(input, output, session) {
                   cellWidths = c('300px', '100px'),
                   cellArgs = list(style = 'vertical-align: top'),
                   uiOutput('out_transect_starttime'),
-                  actionButton('set_transect_starttime', 'Start', icon = icon("clock"), class = "btn-primary"),
+                  actionButton('set_transect_starttime', 'Start', icon = icon('clock'), class = 'btn-primary'),
                 ),
                 splitLayout(
                   cellWidths = c('300px', '100px'),
                   cellArgs = list(style = 'vertical-align: top'),
                   uiOutput('out_transect_endtime'),
-                  actionButton('set_transect_endtime', 'End', icon = icon("clock"), class = "btn-primary"),
+                  actionButton('set_transect_endtime', 'End', icon = icon('clock'), class = 'btn-primary'),
                 ),
                 tags$style(type='text/css', '#set_transect_starttime { width:100%; margin-top: 25px}'),
                 tags$style(type='text/css', '#set_transect_endtime { width:100%; margin-top: 25px}'),
@@ -669,8 +703,8 @@ server <- function(input, output, session) {
             tags$head(tags$style(HTML('.shiny-split-layout > div {overflow: visible}'))),
             fluidPage(
               fluidRow(
-                selectInput('equipconfig_shortcode', labelMandatory('Short code'), equipment_df()$short_code),
                 selectInput('equipconfig_type', labelMandatory('Type'), c('instrument','platform')),
+                selectInput('equipconfig_shortcode', labelMandatory('Short code'),  choices=equipment_df()$short_code, selected=NULL),
                 textInput('equipconfig_name', labelMandatory('Name'), ''),
                 splitLayout(
                   cellWidths = c('150px', '80px', '80px'),
@@ -702,10 +736,14 @@ server <- function(input, output, session) {
             fluidPage(
               fluidRow(
                 textInput('diveconfig_name', labelMandatory('Name'), ''),
-                selectizeInput('ship_config', labelMandatory('Ship'), choices=equipconfig_df()$name, multiple=T, options = list(maxItems = 1)),
-                selectizeInput('sub_config', labelMandatory('Sub'), choices=equipconfig_df()$name, multiple=T, options = list(maxItems = 1)),
-                selectInput('ship_instrument_configs', labelMandatory('Ship instruments'), choices=equipconfig_df()$name, multiple=T),
-                selectInput('sub_instrument_configs', labelMandatory('Sub instruments'), choices=equipconfig_df()$name, multiple=T),
+                selectizeInput('ship_config', labelMandatory('Ship'), choices=equipconfig_df()$name[equipconfig_df()$type == 'platform'], 
+                               multiple=T, options = list(maxItems = 1)),
+                selectizeInput('sub_config', labelMandatory('Sub'), choices=equipconfig_df()$name[equipconfig_df()$type == 'platform'],
+                               multiple=T, options = list(maxItems = 1)),
+                selectInput('ship_instrument_configs', labelMandatory('Ship instruments'), 
+                            choices=equipconfig_df()$name[equipconfig_df()$type == 'instrument'], multiple=T),
+                selectInput('sub_instrument_configs', labelMandatory('Sub instruments'), 
+                            choices=equipconfig_df()$name[equipconfig_df()$type == 'instrument'], multiple=T),
                 textInput('diveconfig_note', 'Note', ''),
                 helpText(labelMandatory(''), paste('Mandatory field')),
                 actionButton(button_id, 'Submit', class = 'btn-warning')
@@ -1286,7 +1324,7 @@ observeEvent(input$submit_edit_equipconfig, priority = 20, {
 
 
 ###################################
-#        Diveconfig Edit         #
+#         Diveconfig Edit         #
 ###################################
 
 # Edit data
@@ -1335,6 +1373,126 @@ observeEvent(input$submit_edit_diveconfig, priority = 20, {
   removeModal()
   
 })
+
+
+
+
+#########################
+#         Checks        #
+#########################
+
+
+# Check boxes
+output$totalDives <- renderInfoBox({
+  infoBox(
+    HTML(paste('Total',br(),'dives')), nrow(dives_df()), 
+    icon = icon('arrow-down-up-across-line'), color = 'purple'
+  )
+})
+output$totalTransects <- renderInfoBox({
+  infoBox(
+    HTML(paste('Total',br(),'transects')), nrow(transects_df()), 
+    icon = icon('route'), color = 'green'
+  )
+})
+output$totalEquipconfigs <- renderInfoBox({
+  infoBox(
+    HTML(paste('Total equipment',br(),'configurations')), nrow(equipconfig_df()), 
+    icon = icon('screwdriver'), color = 'aqua'
+  )
+})
+output$totalDiveconfigs <- renderInfoBox({
+  infoBox(
+    HTML(paste('Total dive',br(),'configurations')), nrow(diveconfig_df()), 
+    icon = icon('sliders'), color = 'maroon'
+  )
+})
+
+
+# Plots
+
+# Duration of dives
+output$plot1 <- renderPlot({
+  # Prep
+  tmp <- dives_df()
+  tmp$start_time <- strptime(tmp$start_time, format='%Y-%m-%dT-%TZ', tz='GMT')
+  tmp$end_time <- strptime(tmp$end_time, format='%Y-%m-%dT-%TZ', tz='GMT')
+  tmp$diff <- as.numeric(difftime(tmp$end_time, tmp$start_time, units = 'mins'))
+  # Plot
+  plot1 <- ggplot(tmp) + 
+    geom_col(aes(y = name, x = diff), fill='#605CA8') + 
+    labs(y = 'Dives', x='Length in minutes') + 
+    theme_minimal(base_size = 14) +
+    theme(panel.grid.major = element_blank())
+  plot1
+})
+
+# Duration of transects
+output$plot2 <- renderPlot({
+  # Prep
+  tmp <- transects_df()
+  tmp$start_time <- strptime(tmp$start_time, format='%Y-%m-%dT-%TZ', tz='GMT')
+  tmp$end_time <- strptime(tmp$end_time, format='%Y-%m-%dT-%TZ', tz='GMT')
+  tmp$diff <- as.numeric(difftime(tmp$end_time, tmp$start_time, units = 'mins'))
+  # Plot
+  plot2 <- ggplot(tmp) + 
+    geom_col(aes(y = name, x = diff), fill='#00A65A') + 
+    labs(y = 'Transects', x='Length in minutes') + 
+    theme_minimal(base_size = 14) + 
+    theme(panel.grid.major = element_blank())
+  plot2
+})
+
+
+# Hours piloted
+output$plot3 <- renderPlot({
+  # Prep
+  tmp <- dives_df()
+  tmp$start_time <- strptime(tmp$start_time, format='%Y-%m-%dT-%TZ', tz='GMT')
+  tmp$end_time <- strptime(tmp$end_time, format='%Y-%m-%dT-%TZ', tz='GMT')
+  tmp$diff <- as.numeric(difftime(tmp$end_time, tmp$start_time, units = 'hours'))
+  a <- aggregate(diff ~ pilot, sum, data=tmp)
+  # Plot
+  plot2 <- ggplot(a) + 
+    geom_col(aes(y = pilot, x = diff), fill='#3C8DBC') + 
+    labs(y = 'Pilot', x='Total hours') + 
+    theme_minimal(base_size = 14) +
+    theme(panel.grid.major = element_blank())
+  plot2
+})
+
+
+# Warnings
+# Additional checks can be added to wlist 
+output$textwarnings <- renderUI({
+  # Empty list
+  wlist <- list()
+  #Tables
+  ds <- dives_df()
+  ts <- transects_df()
+  
+  # Checks
+  # Check for missing dives (transects that have no associated dive)
+  if( any(!(ds$name %in% ts$dive_name)) ) wlist[['Missing dives']] <- ds$name[!ds$name %in% ts$dive_name]
+  # Check duplicate dive names
+  if( any(duplicated(ds$name)) ) wlist[['Duplicate dives']] <- ds$name[duplicated(ds$name)]
+  # Check duplicate transect names
+  if( any(duplicated(ts$name)) ) wlist[['Duplicate transects']] <- ts$name[duplicated(ts$name)]
+  
+  # Output text
+  if(length(wlist) > 0){
+    toprint <- NULL
+    for( i in 1:length(wlist)){
+    tmp <- c('<b>', names(wlist)[[i]], '</b>: ', paste(wlist[[i]], collapse = ', '))
+    toprint <- c(toprint, paste(tmp, collapse = ''))
+    }
+    out <- HTML(paste(toprint, br(), br()))
+  } else {
+    out <- HTML('<h4>No warnings</h4>')
+  }
+  out
+})
+
 
 
 } # End server
