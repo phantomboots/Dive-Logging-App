@@ -233,16 +233,18 @@ border-top-color:#364950;
                    infoBoxOutput('totalDiveconfigs', width=3)
                  ),
                  fluidRow(
-                   box(title = 'Duration of dives', plotOutput('plot1', height = 300),
-                       status='primary', solidHeader=TRUE),
-                   box(title = 'Duration of transects', plotOutput('plot2', height = 300),
-                       status='primary', solidHeader=TRUE),
+                   box(title = 'Duration of dives', plotOutput('plot1', height = 250),
+                       status='primary', solidHeader=TRUE, width=4),
+                   box(title = 'Duration of transects', plotOutput('plot2', height = 250),
+                       status='primary', solidHeader=TRUE, width=4),
+                   box(title = 'Hours piloting', plotOutput('plot3', height = 250), 
+                       status='primary', solidHeader=TRUE, width=4),
                  ),
                  fluidRow(
-                   box(title = 'Hours piloting', plotOutput('plot3', height = 250), 
-                       status='primary', solidHeader=TRUE),
+                   box(title = 'Timeline', plotOutput('plot4', height = 350), 
+                       status='primary', solidHeader=TRUE, width=8),
                    box(title=span('Warnings', icon('triangle-exclamation')), status='warning', 
-                       solidHeader=TRUE, htmlOutput('textwarnings')),
+                       solidHeader=TRUE, htmlOutput('textwarnings'), width=4),
                  )
                )
     )
@@ -1419,12 +1421,12 @@ output$plot1 <- renderPlot({
   tmp$end_time <- strptime(tmp$end_time, format='%Y-%m-%dT-%TZ', tz='GMT')
   tmp$diff <- as.numeric(difftime(tmp$end_time, tmp$start_time, units = 'mins'))
   # Plot
-  plot1 <- ggplot(tmp) + 
+  oplot <- ggplot(tmp) + 
     geom_col(aes(y = name, x = diff), fill='#605CA8') + 
     labs(y = 'Dives', x='Length in minutes') + 
     theme_minimal(base_size = 14) +
     theme(panel.grid.major = element_blank())
-  plot1
+  oplot
 })
 
 # Duration of transects
@@ -1435,12 +1437,12 @@ output$plot2 <- renderPlot({
   tmp$end_time <- strptime(tmp$end_time, format='%Y-%m-%dT-%TZ', tz='GMT')
   tmp$diff <- as.numeric(difftime(tmp$end_time, tmp$start_time, units = 'mins'))
   # Plot
-  plot2 <- ggplot(tmp) + 
+  oplot <- ggplot(tmp) + 
     geom_col(aes(y = name, x = diff), fill='#00A65A') + 
     labs(y = 'Transects', x='Length in minutes') + 
     theme_minimal(base_size = 14) + 
     theme(panel.grid.major = element_blank())
-  plot2
+  oplot
 })
 
 
@@ -1453,14 +1455,43 @@ output$plot3 <- renderPlot({
   tmp$diff <- as.numeric(difftime(tmp$end_time, tmp$start_time, units = 'hours'))
   a <- aggregate(diff ~ pilot, sum, data=tmp)
   # Plot
-  plot2 <- ggplot(a) + 
+  oplot <- ggplot(a) + 
     geom_col(aes(y = pilot, x = diff), fill='#3C8DBC') + 
     labs(y = 'Pilot', x='Total hours') + 
     theme_minimal(base_size = 14) +
     theme(panel.grid.major = element_blank())
-  plot2
+  oplot
 })
 
+# Timeline
+output$plot4 <- renderPlot({
+  # Prep
+  ds <- dives_df()
+  ts <- transects_df()
+  ds$start_time <- as.POSIXct(ds$start_time, format='%Y-%m-%dT-%TZ', tz='GMT')
+  ds$end_time <- as.POSIXct(ds$end_time, format='%Y-%m-%dT-%TZ', tz='GMT')
+  ts$start_time <- as.POSIXct(ts$start_time, format='%Y-%m-%dT-%TZ', tz='GMT')
+  ts$end_time <- as.POSIXct(ts$end_time, format='%Y-%m-%dT-%TZ', tz='GMT')
+  ds$dive_name <- ds$name
+    # Plot
+  oplot <- ggplot(data = NULL) + 
+    geom_point(data=ts, aes(x=start_time, y=1.01 ), colour='grey30',fill='#00A65A', size=5, shape=25) + 
+    geom_point(data=ts, aes(x=end_time, y=.99 ), colour='grey30', fill='#00A65A', size=5, shape=24) + 
+    geom_segment(data=ds, aes(x=start_time, xend=end_time, y=1, yend=1), colour='#605CA8', size=2) + 
+    facet_wrap(~dive_name, ncol=1, scales="free_x", strip.position = "left") +
+    scale_y_continuous(expand=expansion(mult = 0, add = 0.01))+
+    labs(x='Dive timeline') + 
+    theme_classic(base_size = 14) +
+    theme(panel.grid.major = element_blank(),
+          strip.background = element_blank(),
+          strip.text.y.left = element_text(angle= 0, hjust=1),
+          axis.title.y = element_blank(),
+          axis.text.y = element_blank(),
+          axis.ticks.y = element_blank(),
+          axis.line.y = element_blank()
+          )
+  oplot
+})
 
 # Warnings
 # Additional checks can be added to wlist 
