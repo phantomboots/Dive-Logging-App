@@ -22,10 +22,10 @@ Under development
 ## Contents
 
 ### db.R
-Script to initilize an empty sqlite database. This should be run at the beginning of each survey. It takes inputs equipment.csv and people.csv which contain lists of current NDST equipment and personnel. This script should not be run once users have started logging events in the app. If the db filename has not been change this could result in data loss because the database storing the app data will be overwritten.
+Script to initilize an empty sqlite database. This should be only be run at the beginning of each survey. It takes inputs equipment.csv and people.csv which contain lists of current NDST equipment and personnel. 
 
 ### app.R
-The R shiny app. The app allows users to add, edit and delete records in cruise, personnel, equipment, equipment configuration, dive configuration, dives, and transect tables. The app can be started and stopped multiple times without resulting in data loss. The data from each session are continually saved to the sqlite db. No data loss will result from a crash unless any form data was left un-submitted. Inputs are the sqlite db created in db.R and a string of config variables that can be found in the set-up section of the script. 
+The R shiny app. The app allows users to add, edit and delete records in cruise, personnel, equipment, equipment configuration, dive configuration, dives, and transect tables. The app can be started and stopped multiple times without resulting in data loss. The data from each session are continually saved to the sqlite db. No data loss will result from a crash unless any form data was left un-submitted. Inputs are the sqlite db created in db.R and config-variables.csv file. 
 
 
 ## Requirements
