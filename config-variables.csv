@@ -1,0 +1,12 @@
+variable,unit,description
+pan,degree,
+tilt,degree,
+yaw,degree,
+offset_aft,meters,
+offset_fwd,meters,
+offset_strd,meters,
+offset_port,meters,
+zoom,percent,
+aperture,percent,
+x,meters,
+y,meters,
